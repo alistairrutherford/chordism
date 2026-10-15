@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="CzSpkP" name="ChordismSpike" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.0.1"
+              companyName="Alistair Rutherford" bundleIdentifier="com.alistairrutherford.chordismspike"
+              pluginFormats="buildAU,buildVST3,buildStandalone"
+              pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn,pluginProducesMidiOut"
+              pluginName="Chordism Spike" pluginDesc="Phase 0 feasibility spike for Chordism"
+              pluginManufacturer="Alistair Rutherford" pluginManufacturerCode="ARut"
+              pluginCode="CzSp" pluginAUMainType="'aumu'" pluginVST3Category="Instrument,Tools"
+              cppLanguageStandard="17">
+  <MAINGROUP id="mainGp" name="ChordismSpike">
+    <GROUP id="srcGp0" name="Source">
+      <FILE id="fPrc01" name="PluginProcessor.cpp" compile="1" resource="0"
+            file="Source/PluginProcessor.cpp"/>
+      <FILE id="fPrh01" name="PluginProcessor.h" compile="0" resource="0"
+            file="Source/PluginProcessor.h"/>
+      <FILE id="fEdc01" name="PluginEditor.cpp" compile="1" resource="0"
+            file="Source/PluginEditor.cpp"/>
+      <FILE id="fEdh01" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+      <FILE id="fHoc01" name="HostedInstrument.cpp" compile="1" resource="0"
+            file="Source/HostedInstrument.cpp"/>
+      <FILE id="fHoh01" name="HostedInstrument.h" compile="0" resource="0"
+            file="Source/HostedInstrument.h"/>
+      <FILE id="fExc01" name="MidiExport.cpp" compile="1" resource="0" file="Source/MidiExport.cpp"/>
+      <FILE id="fExh01" name="MidiExport.h" compile="0" resource="0" file="Source/MidiExport.h"/>
+      <FILE id="fShh01" name="SharedSession.h" compile="0" resource="0" file="Source/SharedSession.h"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"
+               JUCE_PLUGINHOST_AU="1" JUCE_PLUGINHOST_VST3="1"/>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX" extraFrameworks="CoreMIDI,CoreAudioKit">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="ChordismSpike" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="ChordismSpike" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
