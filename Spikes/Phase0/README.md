@@ -63,6 +63,16 @@ is saved and loaded correctly on reopen, and the log shows both restores.
 Live hadn't been restarted, so the new dropdown and *Hosted:* line haven't
 been seen in Live yet. They're covered by test A6 and the editor snapshot.
 
+## Result: Phase 0 passed (2026-10-16)
+
+Round 2 results: **1a pass** (Live lists Chordism Spike VST3 under MIDI From),
+**1b pass** (the virtual port records Chordism's chords), **2 pass** (hosted
+instrument saved and restored), **3 pass** (round 1), and **4 pass** (key
+follows with Sync on in both).
+
+Not yet measured: the saved recordings through the port were played by hand,
+so timing against the beat wasn't checked. This moves to Phase 1 (PLAN.md §3).
+
 ## Live 12 checklist, round 2
 
 **First, quit and restart Live:** it keeps the previous build loaded until it

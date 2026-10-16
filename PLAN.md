@@ -99,8 +99,18 @@ by (a) recording the destination track, or (b) Export drag-out.
 3. A file dragged out with `performExternalDragDropOfFiles` lands in Live as a MIDI clip at the drop point.
 4. Two instances in one Live set share a process-wide static (Instance Sync). Live does not sandbox plugins by default, but Bitwig and Logic may run plugins in separate processes.
 
-If (1) fails, the fallback is NoteCap's CoreMIDI virtual port (already built and tested), with
-hosting as the recommended route.
+**Phase 0 outcome (Live 12.4.6, 2026-10-16): all four confirmed.** Chordism ships three ways to
+get MIDI to an instrument in Live, all verified:
+
+| Route | Use | Status |
+|---|---|---|
+| **VST3 → "MIDI From: Chordism track / Chordism"** on the instrument track | Default, as ChordPrism documents it | Live lists the plugin as a MIDI source (round 2). In round 1 the routing was left on "Post FX", which is why nothing played. |
+| **CoreMIDI virtual port** ("Chordism Out n") as the track's MIDI input | Alternative; also works from the AU build | Records Chordism's chords in Live (round 2). Needs the port's *Track* switch on in Live's MIDI settings. |
+| **Hosted instrument inside Chordism** | One-track setups, and AU in Live | Plays, and the instrument and its settings are restored with the set (round 2). |
+
+**Carried into Phase 1:** record the test pattern through the VST3 route and the port, and
+measure the offset from the beat. The round 2 recordings were played by hand, so timing wasn't
+measured. The port has a timestamp offset if it needs calibrating.
 
 ---
 
@@ -351,13 +361,14 @@ chordism/
 
 | Phase | State | Notes |
 |---|---|---|
-| 0. Feasibility | **Hosting and drag-out passed in Live. MIDI routing (virtual port) and Instance Sync still to retest.** | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Round 1 findings and the round 2 checklist are in `Spikes/Phase0/README.md`. |
+| 0. Feasibility | **Done (2026-10-16).** Routing, hosting, drag-out and Instance Sync all confirmed in Live 12.4.6. | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Results by round are in `Spikes/Phase0/README.md`. Routing decision is in §3. |
+| 1. Skeleton + theory core | Next | Includes the timing measurement carried over from Phase 0 (§3). |
 
-**Round 1 in Live 12.4.6:**
-- **Drag MIDI out: works.**
-- **VST3 MIDI out → another track: not offered by Live.** Track 2 could only pick "Pre FX"/"Post FX" from the Chordism track. Vendor guidance (Scaler, Blue Cat) says Live takes plugin MIDI out from VST2, and we can't build VST2 (no SDK, and Steinberg no longer licenses it). Round 2 tests the **CoreMIDI virtual port** route (NoteCap's code). If that records on time, it becomes the primary route in §3, with in-plugin hosting as the second route.
-- **Hosting: passed in round 2.** The hosted instrument and its settings are saved with the set and restored on reopen, in Live with the AU build. The spike now tells Live when its state changes, keeps a hosted instrument that hasn't finished restoring (or failed to) in the next save, and logs save/restore to `~/Library/Logs/ChordismSpike.log`. The Juno106 on its own also lost edits across a reopen, so that is being checked separately.
-- **Instance Sync: works in principle.** Both instances share one process, but Sync was off on one of them. The UI now lists every instance with its Sync setting. Round 2 retests.
+**Phase 0 in Live 12.4.6:**
+- **Drag MIDI out: passed** (round 1). Dropped clips are exactly on the grid.
+- **MIDI to another track: passed** (round 2). Live lists the VST3 under "MIDI From", and the CoreMIDI virtual port records Chordism's chords. In round 1 the routing was left on "Post FX".
+- **Hosting: passed** (round 2). The hosted instrument and its settings are saved and restored. Fixes along the way: tell the host when state changes, keep a pending or failed restore in the next save, and show the restored instrument in the UI.
+- **Instance Sync: passed** (round 2), once Sync was on for both instances. Live runs all instances in one process.
 
 **Other findings:** a JUCE host gets no MIDI output from the AU *instrument* build. That doesn't matter for Live, but the Logic `aumi` target needs its own check in Phase 1.
 `pluginval` isn't installed on this Mac. Set it up in Phase 1 (CI).
