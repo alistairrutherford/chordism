@@ -169,7 +169,7 @@ SpikeEditor::SpikeEditor (SpikeProcessor& p)
     addAndMakeVisible (exportHandle);
 
     refreshPluginList();
-    setSize (700, 610);
+    setSize (700, 630);
     startTimerHz (10);
     timerCallback();
 }
@@ -181,13 +181,24 @@ SpikeEditor::~SpikeEditor()
 
 void SpikeEditor::refreshPluginList()
 {
+    // A restored instrument is listed (and selected) even if nothing was scanned
+    // in this session, so the window shows what is actually loaded.
+    const auto loaded = processor.hosted.getLoadedDescription();
+    if (processor.hosted.isLoaded())
+        processor.hosted.addToAvailable (loaded);
+    listedLoaded = processor.hosted.getLoadedName();
+
     pluginBox.clear (juce::dontSendNotification);
-    int id = 1;
+    int id = 1, selected = 0;
     for (const auto& d : processor.hosted.getAvailable())
+    {
+        if (processor.hosted.isLoaded() && d.isDuplicateOf (loaded))
+            selected = id - 1;
         pluginBox.addItem (d.name + "  (" + d.pluginFormatName + ", " + d.manufacturerName + ")", id++);
+    }
 
     if (pluginBox.getNumItems() > 0)
-        pluginBox.setSelectedItemIndex (0, juce::dontSendNotification);
+        pluginBox.setSelectedItemIndex (selected, juce::dontSendNotification);
 }
 
 void SpikeEditor::paint (juce::Graphics& g)
@@ -201,7 +212,7 @@ void SpikeEditor::resized()
 
     title.setBounds (r.removeFromTop (28));
     r.removeFromTop (6);
-    status.setBounds (r.removeFromTop (190));
+    status.setBounds (r.removeFromTop (210));
     r.removeFromTop (10);
 
     auto row = r.removeFromTop (26);
@@ -259,7 +270,25 @@ void SpikeEditor::timerCallback()
          << "MIDI: last in " << liveNoteName (processor.lastInputNote.load())
          << "   last out " << liveNoteName (processor.lastOutputNote.load())
          << "   note-ons sent " << processor.outputNoteOns.load() << "\n"
-         << "Instances (sync: Key follows the others only when Sync is on for both):";
+         << "Hosted: ";
+
+    shownPeak = juce::jmax (processor.hosted.takeOutputPeak(), shownPeak * 0.7f);
+    if (processor.hosted.isLoaded())
+    {
+        const auto d = processor.hosted.getLoadedDescription();
+        text << d.name << " (" << d.pluginFormatName << ")";
+        if (processor.hosted.getRestoreInfo().isNotEmpty())
+            text << ", " << processor.hosted.getRestoreInfo();
+        text << "   output " << (shownPeak > 1.0e-5f ? juce::String (juce::Decibels::gainToDecibels (shownPeak), 1) + " dB"
+                                                     : juce::String ("silent"));
+    }
+    else
+    {
+        text << (processor.hosted.getRestoreError().isNotEmpty() ? "restore FAILED: " + processor.hosted.getRestoreError()
+                                                                 : juce::String ("none"));
+    }
+
+    text << "\nInstances (sync: Key follows the others only when Sync is on for both):";
 
     for (auto& m : session.members)
     {
@@ -281,6 +310,9 @@ void SpikeEditor::timerCallback()
 
     if (! keyBox.isPopupActive())
         keyBox.setSelectedItemIndex (processor.getEffectiveKey(), juce::dontSendNotification);
+
+    if (processor.hosted.getLoadedName() != listedLoaded)
+        refreshPluginList();
 
     if (processor.hosted.isLoaded() && ! hostStatus.getText().startsWith ("Error"))
         hostStatus.setText ("Playing: " + processor.hosted.getLoadedName(), juce::dontSendNotification);

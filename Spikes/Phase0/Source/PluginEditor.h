@@ -53,5 +53,8 @@ private:
 
     ExportHandle exportHandle;
 
+    juce::String listedLoaded;   // hosted instrument the plugin list was last built around
+    float shownPeak = 0.0f;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpikeEditor)
 };

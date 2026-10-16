@@ -456,6 +456,25 @@ int main()
             q.setStateInformation (state.getData(), (int) state.getSize());
             pumpUntil ([&] { return q.hosted.isLoaded(); });
             check (q.hosted.getLoadedName() == p.hosted.getLoadedName(), "hosted instrument restored from saved state");
+            check (q.hosted.getRestoreInfo().startsWith ("restored from the saved set"), ("restore is reported: " + q.hosted.getRestoreInfo()).toStdString());
+
+            // Play through the restored instance, then snapshot its window: the
+            // restored instrument must be visible without scanning.
+            int64_t qc = 0;
+            run (q, ph, 48000.0, 120.0, 256, 256 * 20, qc, false, [] (int64_t start, int, juce::MidiBuffer& m)
+            {
+                if (start == 0) m.addEvents (noteAt (60, 0, true), 0, -1, 0);
+            });
+            {
+                std::unique_ptr<juce::AudioProcessorEditor> editor (q.createEditor());
+                pumpUntil ([] { return false; }, 300);
+                const auto snapshot = editor->createComponentSnapshot (editor->getLocalBounds());
+                const auto png = juce::File::getCurrentWorkingDirectory().getChildFile ("Tests/build/editor_restored.png");
+                png.deleteFile();
+                juce::FileOutputStream out (png);
+                juce::PNGImageFormat().writeImageToStream (snapshot, out);
+                std::cout << "  INFO  editor snapshot: " << png.getFullPathName() << "\n";
+            }
 
             p.hosted.unload();
             check (! p.hosted.isLoaded(), "unload");
@@ -703,6 +722,106 @@ int main()
                 }
 
                 // Give the async instrument load time to finish, then play a chord.
+                float peak = 0.0f;
+                int64_t clock = 0;
+                for (int attempt = 0; attempt < 30 && peak < 1.0e-3f; ++attempt)
+                {
+                    pumpUntil ([] { return false; }, 100);
+                    const auto first = clock;
+                    run (*inst, ph, 48000.0, 120.0, 256, 256 * 40, clock, false, [first] (int64_t start, int, juce::MidiBuffer& m)
+                    {
+                        if (start == first) m.addEvents (noteAt (60, 0, true), 0, -1, 0);
+                    }, &peak);
+                    run (*inst, ph, 48000.0, 120.0, 256, 256 * 4, clock, false, [] (int64_t, int, juce::MidiBuffer& m)
+                    {
+                        m.addEvents (noteAt (60, 0, false), 0, -1, 0);
+                    });
+                }
+
+                check (peak > 1.0e-3f, (label + (stateBeforePrepare ? ", state set before prepare (Live's order)" : ", state set after prepare")
+                                        + ": hosted instrument plays after restore (peak " + juce::String (peak, 4) + ")").toStdString());
+                inst->releaseResources();
+            }
+        }
+    }
+
+    testutil::section ("B4  Reopening a set: built AU restores its hosted instrument");
+    {
+        juce::AudioPluginFormatManager fm;
+        juce::addDefaultFormatsToManager (fm);
+
+        // An AU's saved state is its ClassInfo plist; JUCE keeps the plugin's own
+        // state under "jucePluginState". Build one around an in-process state that
+        // hosts DLSMusicDevice.
+        juce::MemoryBlock inner;
+        {
+            SpikeProcessor p;
+            FakePlayHead ph;
+            prepare (p, ph, 48000.0, 256);
+            juce::OwnedArray<juce::PluginDescription> found;
+            for (auto* f : p.hosted.getFormatManager().getFormats())
+                if (f->getName() == "AudioUnit")
+                    f->findAllTypesForFile (found, "AudioUnit:Synths/aumu,dls ,appl");
+            juce::String error = "pending";
+            if (found.size() == 1)
+                p.hosted.load (*found[0], [&] (const juce::String& e) { error = e; });
+            pumpUntil ([&] { return error != "pending"; });
+            p.getStateInformation (inner);
+        }
+
+        juce::MemoryBlock classInfo;
+        {
+            juce::String error;
+            auto donor = loadBuilt (fm, "AudioUnit", "AudioUnit:Synths/aumu,CzSp,ARut", error);
+            juce::MemoryBlock plist;
+            if (donor) donor->getStateInformation (plist);
+
+            CFDataRef data = CFDataCreate (nullptr, (const UInt8*) plist.getData(), (CFIndex) plist.getSize());
+            auto dict = (CFMutableDictionaryRef) CFPropertyListCreateWithData (nullptr, data, kCFPropertyListMutableContainers, nullptr, nullptr);
+            CFRelease (data);
+            if (dict != nullptr)
+            {
+                CFDataRef state = CFDataCreate (nullptr, (const UInt8*) inner.getData(), (CFIndex) inner.getSize());
+                CFDictionarySetValue (dict, CFSTR ("jucePluginState"), state);
+                CFRelease (state);
+                if (CFDataRef out = CFPropertyListCreateData (nullptr, dict, kCFPropertyListBinaryFormat_v1_0, 0, nullptr))
+                {
+                    classInfo.append (CFDataGetBytePtr (out), (size_t) CFDataGetLength (out));
+                    CFRelease (out);
+                }
+                CFRelease (dict);
+            }
+        }
+        check (classInfo.getSize() > 0, "built an AU ClassInfo state with a hosted DLSMusicDevice");
+
+        std::vector<std::pair<juce::String, juce::MemoryBlock>> states { { "DLSMusicDevice ClassInfo", classInfo } };
+        if (auto* path = std::getenv ("SPIKE_AU_CLASSINFO"))   // a ClassInfo plist taken from a Live set
+        {
+            juce::MemoryBlock fromFile;
+            juce::File (path).loadFileAsData (fromFile);
+            states.push_back ({ "ClassInfo from " + juce::File (path).getFileName(), fromFile });
+        }
+
+        for (const auto& [label, blob] : states)
+        {
+            for (bool stateBeforePrepare : { true, false })
+            {
+                juce::String error;
+                auto inst = loadBuilt (fm, "AudioUnit", "AudioUnit:Synths/aumu,CzSp,ARut", error);
+                if (inst == nullptr) { check (false, "AU created " + error.toStdString()); continue; }
+
+                FakePlayHead ph;
+                if (stateBeforePrepare)
+                {
+                    inst->setStateInformation (blob.getData(), (int) blob.getSize());
+                    prepare (*inst, ph, 48000.0, 256);
+                }
+                else
+                {
+                    prepare (*inst, ph, 48000.0, 256);
+                    inst->setStateInformation (blob.getData(), (int) blob.getSize());
+                }
+
                 float peak = 0.0f;
                 int64_t clock = 0;
                 for (int attempt = 0; attempt < 30 && peak < 1.0e-3f; ++attempt)

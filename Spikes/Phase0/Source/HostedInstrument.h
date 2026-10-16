@@ -24,6 +24,15 @@ public:
     void unload();
 
     juce::String getLoadedName() const;
+    juce::PluginDescription getLoadedDescription() const;
+    juce::String getRestoreInfo() const { return restoreInfo; }   // e.g. "restored from the saved set at 21:21:04"
+
+    // Adds a description to the list shown in the UI (e.g. a restored instrument
+    // that hasn't been scanned in this session).
+    void addToAvailable (const juce::PluginDescription& desc);
+
+    // Peak level of the hosted instrument's output since the last call (UI meter).
+    float takeOutputPeak() noexcept { return outputPeak.exchange (0.0f); }
     bool isLoaded() const { return slot != nullptr; }
     void showEditor();
 
@@ -82,7 +91,8 @@ private:
     std::atomic<bool> dirty { false };
     ChangeListener changeListener { dirty };
     std::unique_ptr<juce::XmlElement> pendingRestore;
-    juce::String restoreError;
+    juce::String restoreError, restoreInfo;
+    std::atomic<float> outputPeak { 0.0f };
 
     std::unique_ptr<juce::DocumentWindow> editorWindow;
     double sampleRate = 44100.0;

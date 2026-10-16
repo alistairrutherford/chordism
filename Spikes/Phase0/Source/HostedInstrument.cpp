@@ -121,12 +121,27 @@ void HostedInstrument::load (const juce::PluginDescription& desc, std::function<
 void HostedInstrument::unload()
 {
     pendingRestore.reset();
+    restoreInfo.clear();
     swapIn (nullptr);
 }
 
 juce::String HostedInstrument::getLoadedName() const
 {
     return slot != nullptr ? slot->description.name : juce::String();
+}
+
+juce::PluginDescription HostedInstrument::getLoadedDescription() const
+{
+    return slot != nullptr ? slot->description : juce::PluginDescription();
+}
+
+void HostedInstrument::addToAvailable (const juce::PluginDescription& desc)
+{
+    for (const auto& d : available)
+        if (d.isDuplicateOf (desc))
+            return;
+
+    available.add (desc);
 }
 
 void HostedInstrument::prepareSlot (Slot& s) const
@@ -212,6 +227,10 @@ bool HostedInstrument::process (juce::AudioBuffer<float>& out, const juce::MidiB
     for (int ch = 0; ch < out.getNumChannels(); ++ch)
         out.addFrom (ch, 0, view, juce::jmin (ch, hostedOuts - 1), 0, numSamples);
 
+    const float peak = view.getMagnitude (0, numSamples);
+    if (peak > outputPeak.load())
+        outputPeak.store (peak);
+
     return true;
 }
 
@@ -285,9 +304,14 @@ void HostedInstrument::restoreState (const juce::XmlElement& xml, std::function<
             return;
 
         if (error.isEmpty())
+        {
             pendingRestore.reset();
+            restoreInfo = "restored from the saved set at " + juce::Time::getCurrentTime().formatted ("%H:%M:%S");
+        }
         else
+        {
             restoreError = error;
+        }
 
         if (log) log ("restore: " + name + (error.isEmpty() ? juce::String (" loaded") : " FAILED: " + error));
         if (done) done (error);

@@ -39,6 +39,30 @@ loads the built bundles the way a host does. **All checks pass:**
 | 2 | Hosting works, settings not persisted | The hosted Juno **was** written into every save (AU and VST3, with your edits at 13:01), and restoring from those saves works outside Live. Two gaps were fixed: the plugin never told Live its state had changed, so Live didn't know the set needed saving; and a save made while the restore was still loading could drop the instrument. *Also seen:* the Juno on track 2 (a plain Live device, not hosted) had your edits in the 12:58 save but defaults again after you reopened at 12:58:34. That points at the Juno or Live, not Chordism. Round 2 tests it separately. |
 | 4 | Key change not synced | In the saved set, the instance on **track 1 had Sync key *off*** (key C#), and track 2 had it on (key D). Live runs both instances in one process, so the shared state works. Each window now lists every instance with its Sync setting. |
 
+## Round 2 in Live (2026-10-16): hosting
+
+You reported: *the loaded instrument is not saved when the track is saved and
+reloaded.* What the plugin's log and the saved `Untitled.als` show:
+
+- 21:20:47: Live saved the set with **Juno 106-ARP (AU) hosted** in Chordism Spike (AU).
+- 21:21:04: on reopen, the new instance got that state and logged *restore: Juno 106-ARP loaded*.
+- 21:21:19: a Juno was loaded by hand again.
+
+Fed the exact state Live saved, the built AU restores the Juno and it plays
+(test B4). So the instrument **was** saved and reloaded. **The window just
+didn't show it:** the instrument dropdown is empty after a reopen (the scan
+list isn't saved), and the only sign was a small "Playing: …" label.
+
+Fixed: after a restore, the dropdown lists and selects the restored instrument,
+and the status panel has a **Hosted:** line, e.g. *Juno 106-ARP (AudioUnit),
+restored from the saved set at 21:21:04, output -18.0 dB*. The output level
+shows whether sound is actually coming through.
+
+**Retest 2: passed (2026-10-16 21:42 and 21:44).** The hosted Juno 106-ARP (AU)
+is saved and loaded correctly on reopen, and the log shows both restores.
+Live hadn't been restarted, so the new dropdown and *Hosted:* line haven't
+been seen in Live yet. They're covered by test A6 and the editor snapshot.
+
 ## Live 12 checklist, round 2
 
 **First, quit and restart Live:** it keeps the previous build loaded until it
