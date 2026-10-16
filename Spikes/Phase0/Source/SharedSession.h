@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 
@@ -26,6 +27,35 @@ struct SharedSession
         key.store (newKey);
         lastWriterId.store (writerId);
         version.fetch_add (1);
+    }
+
+    // Registry of live instances, so each editor can show every instance's key and
+    // sync setting. id == 0 marks a free slot.
+    struct Member
+    {
+        std::atomic<int> id { 0 };
+        std::atomic<int> key { 0 };
+        std::atomic<bool> sync { true };
+    };
+
+    static constexpr int maxMembers = 32;
+    std::array<Member, maxMembers> members;
+
+    Member* join (int id) noexcept
+    {
+        for (auto& m : members)
+        {
+            int expected = 0;
+            if (m.id.compare_exchange_strong (expected, id))
+                return &m;
+        }
+        return nullptr;
+    }
+
+    void leave (Member* m) noexcept
+    {
+        if (m != nullptr)
+            m->id.store (0);
     }
 
 private:

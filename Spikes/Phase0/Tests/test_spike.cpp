@@ -5,6 +5,9 @@
 #include "PluginProcessor.h"
 #include "TestUtil.h"
 #include <CoreFoundation/CoreFoundation.h>
+#include <CoreMIDI/CoreMIDI.h>
+#include <mach/mach_time.h>
+#include <mutex>
 #include <atomic>
 #include <cstdlib>
 #include <functional>
@@ -165,6 +168,42 @@ namespace
         p.getStateInformation (mb);
         return mb;
     }
+
+    // Listens to one CoreMIDI source endpoint and records note-ons with timestamps.
+    struct PortListener
+    {
+        struct Note { int64_t ns; int note; };
+        MIDIPortRef port = 0;
+        std::mutex lock;
+        std::vector<Note> notes;
+
+        bool connect (uint32_t endpoint)
+        {
+            static MIDIClientRef client = [] { MIDIClientRef c = 0; MIDIClientCreateWithBlock (CFSTR ("SpikeTest"), &c, nullptr); return c; }();
+            if (client == 0 || endpoint == 0) return false;
+            auto receive = ^(const MIDIEventList* list, void*)
+            {
+                mach_timebase_info_data_t tb; mach_timebase_info (&tb);
+                const MIDIEventPacket* p = &list->packet[0];
+                std::lock_guard<std::mutex> g (lock);
+                for (UInt32 i = 0; i < list->numPackets; ++i)
+                {
+                    for (UInt32 w = 0; w < p->wordCount; ++w)
+                    {
+                        const UInt32 word = p->words[w];
+                        if ((word >> 28) == 0x2 && ((word >> 20) & 0xf) == 0x9 && (word & 0xff) > 0)
+                            notes.push_back ({ (int64_t) ((__int128) p->timeStamp * tb.numer / tb.denom), (int) ((word >> 8) & 0x7f) });
+                    }
+                    p = MIDIEventPacketNext (p);
+                }
+            };
+            if (MIDIInputPortCreateWithProtocol (client, CFSTR ("in"), kMIDIProtocol_1_0, &port, receive) != noErr) return false;
+            return MIDIPortConnectSource (port, (MIDIEndpointRef) endpoint, nullptr) == noErr;
+        }
+
+        std::vector<Note> snapshot() { std::lock_guard<std::mutex> g (lock); return notes; }
+        ~PortListener() { if (port) MIDIPortDispose (port); }
+    };
 
     // Wraps a plugin state blob the way JUCE's VST3 host stores component state.
     juce::MemoryBlock asVst3HostState (const juce::MemoryBlock& pluginState)
@@ -424,6 +463,166 @@ int main()
     }
 
     //==========================================================================
+    testutil::section ("A7  Hosted instrument settings survive save → restore (in-process)");
+    {
+        struct Target { const char* label; const char* format; const char* id; };
+        const auto junoVst3 = juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                                  .getChildFile ("Library/Audio/Plug-Ins/VST3/Juno106.vst3").getFullPathName();
+        for (auto t : { Target { "DLSMusicDevice (AU)", "AudioUnit", "AudioUnit:Synths/aumu,dls ,appl" },
+                        Target { "Juno106 (AU)", "AudioUnit", "AudioUnit:Synths/aumu,Jn06,ARut" },
+                        Target { "Juno106 (VST3)", "VST3", junoVst3.toRawUTF8() } })
+        {
+            SpikeProcessor p;
+            FakePlayHead ph;
+            prepare (p, ph, 48000.0, 256);
+
+            juce::OwnedArray<juce::PluginDescription> found;
+            for (auto* f : p.hosted.getFormatManager().getFormats())
+                if (f->getName() == t.format)
+                    f->findAllTypesForFile (found, t.id);
+            if (found.isEmpty()) { std::cout << "  SKIP  " << t.label << " not installed\n"; continue; }
+
+            juce::String error = "pending";
+            p.hosted.load (*found[0], [&] (const juce::String& e) { error = e; });
+            pumpUntil ([&] { return error != "pending"; });
+            auto* inst = p.hosted.getInstance();
+            if (inst == nullptr || inst->getParameters().isEmpty()) { check (false, std::string (t.label) + " loaded with parameters"); continue; }
+
+            // Change every real parameter to a distinctive value, as a user editing a
+            // patch would. (JUCE-built VST3s also expose ~2000 "MIDI CC" proxy
+            // parameters that turn into controller messages, and a "Program" selector
+            // that loads a factory preset; neither is part of the patch.)
+            auto isProxy = [] (juce::AudioProcessorParameter* param)
+            {
+                const auto name = param->getName (64);
+                return name.startsWith ("MIDI CC") || name.equalsIgnoreCase ("Bypass") || name.equalsIgnoreCase ("Program");
+            };
+
+            std::vector<int> indices;
+            for (auto* param : inst->getParameters())
+            {
+                if (isProxy (param)) continue;
+                param->setValueNotifyingHost (param->getValue() < 0.5f ? 0.8f : 0.2f);
+                indices.push_back (param->getParameterIndex());
+            }
+
+            int64_t clk = 0;
+            run (p, ph, 48000.0, 120.0, 256, 256 * 4, clk, false);   // let parameter changes reach the processor
+
+            // Compare displayed values, so stepped parameters compare as the step they snapped to.
+            std::vector<juce::String> wanted;
+            for (int i : indices)
+            {
+                auto* param = inst->getParameters()[i];
+                wanted.push_back (param->getText (param->getValue(), 64));
+            }
+
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+
+            SpikeProcessor q;
+            prepare (q, ph, 48000.0, 256);
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            pumpUntil ([&] { return q.hosted.isLoaded(); });
+
+            auto* restored = q.hosted.getInstance();
+            if (restored != nullptr)
+            {
+                int64_t c2 = 0;
+                run (q, ph, 48000.0, 120.0, 256, 256 * 4, c2, false);
+            }
+            int same = 0, total = (int) wanted.size(), shown = 0;
+            if (restored != nullptr)
+                for (size_t k = 0; k < indices.size(); ++k)
+                {
+                    auto* rp = restored->getParameters()[indices[k]];
+                    const auto got = rp->getText (rp->getValue(), 64);
+                    const bool numeric = got.containsOnly ("-0123456789.") && wanted[k].containsOnly ("-0123456789.");
+                    const bool ok = got == wanted[k]
+                                 || (numeric && std::abs (got.getDoubleValue() - wanted[k].getDoubleValue()) < 1.0e-4);
+                    same += ok ? 1 : 0;
+                    if (! ok && shown++ < 8)
+                        std::cout << "        " << rp->getName (40) << ": saved \"" << wanted[k] << "\" restored \"" << got << "\"\n";
+                }
+
+            check (restored != nullptr && same == total,
+                   std::string (t.label) + ": " + std::to_string (same) + "/" + std::to_string (total) + " parameters restored");
+        }
+    }
+
+    //==========================================================================
+    testutil::section ("A8  CoreMIDI virtual port carries the same chords");
+    {
+        SpikeProcessor p;
+        FakePlayHead ph;
+        prepare (p, ph, 48000.0, 256);
+        p.syncKey.store (false);
+        p.setKeyFromUi (0);
+        pumpUntil ([&] { return p.getPortEndpoint() != 0; }, 2000);
+        check (p.getPortEndpoint() != 0, ("port opened: " + p.getPortStatus()).toStdString());
+
+        PortListener listener;
+        check (listener.connect (p.getPortEndpoint()), "test listener connected to the port");
+
+        int64_t clock = 0;
+        const auto before = (int64_t) ((__int128) mach_absolute_time() * [] { mach_timebase_info_data_t tb; mach_timebase_info (&tb); return tb; }().numer
+                                       / [] { mach_timebase_info_data_t tb; mach_timebase_info (&tb); return tb; }().denom);
+        run (p, ph, 48000.0, 120.0, 256, 256, clock, false, [] (int64_t, int, juce::MidiBuffer& m)
+        {
+            m.addEvents (noteAt (60, 128, true), 0, -1, 0);
+        });
+        pumpUntil ([&] { return listener.snapshot().size() >= 3; }, 2000);
+
+        const auto got = listener.snapshot();
+        std::multiset<int> notes;
+        for (const auto& n : got) notes.insert (n.note);
+        check (notes == cMajor, "port delivered C E G (" + std::to_string (got.size()) + " note-ons)");
+        if (! got.empty())
+        {
+            const double offsetMs = (double) (got[0].ns - before) / 1.0e6;
+            check (offsetMs > 0.0 && offsetMs < 50.0,
+                   "port timestamp ≈ block time + 128 samples (" + std::to_string (offsetMs) + " ms after the block started)");
+        }
+
+        run (p, ph, 48000.0, 120.0, 256, 256, clock, false, [] (int64_t, int, juce::MidiBuffer& m)
+        {
+            m.addEvents (noteAt (60, 0, false), 0, -1, 0);
+        });
+    }
+
+    //==========================================================================
+    testutil::section ("A9  A hosted instrument that can't be restored is kept in the saved state");
+    {
+        SpikeProcessor p;
+        FakePlayHead ph;
+        prepare (p, ph, 48000.0, 256);
+
+        juce::PluginDescription missing;
+        missing.name = "Not Installed Synth";
+        missing.pluginFormatName = "AudioUnit";
+        missing.fileOrIdentifier = "AudioUnit:Synths/aumu,Nope,Nope";
+        missing.isInstrument = true;
+
+        juce::XmlElement saved ("ChordismSpike");
+        auto* hostedXml = saved.createNewChildElement ("Hosted");
+        hostedXml->addChildElement (missing.createXml().release());
+        hostedXml->setAttribute ("state", juce::MemoryBlock ("abc", 3).toBase64Encoding());
+        juce::MemoryBlock blob;
+        juce::AudioProcessor::copyXmlToBinary (saved, blob);
+
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        pumpUntil ([&] { return p.hosted.getRestoreError().isNotEmpty(); }, 3000);
+        check (p.hosted.getRestoreError().isNotEmpty(), ("restore reports an error: " + p.hosted.getRestoreError()).toStdString());
+
+        juce::MemoryBlock resaved;
+        p.getStateInformation (resaved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (resaved.getData(), (int) resaved.getSize());
+        const auto* h = xml != nullptr ? xml->getChildByName ("Hosted") : nullptr;
+        check (h != nullptr && h->getStringAttribute ("state") == hostedXml->getStringAttribute ("state"),
+               "saving again keeps the hosted instrument and its state (nothing silently dropped)");
+    }
+
+    //==========================================================================
     testutil::section ("B1  Built VST3 bundle, loaded like a host (what Live sees)");
     {
         juce::AudioPluginFormatManager fm;
@@ -447,6 +646,83 @@ int main()
                    "key G set on VST3 instance 1 reaches VST3 instance 2 (shared static across instances)");
             const auto reset = asVst3HostState (stateWithKey (0));
             inst1->setStateInformation (reset.getData(), (int) reset.getSize());
+        }
+    }
+
+    testutil::section ("B3  Reopening a set: built VST3 restores its hosted instrument");
+    {
+        // A saved state with Apple's DLSMusicDevice hosted inside, made in-process.
+        juce::MemoryBlock saved;
+        {
+            SpikeProcessor p;
+            FakePlayHead ph;
+            prepare (p, ph, 48000.0, 256);
+            juce::OwnedArray<juce::PluginDescription> found;
+            for (auto* f : p.hosted.getFormatManager().getFormats())
+                if (f->getName() == "AudioUnit")
+                    f->findAllTypesForFile (found, "AudioUnit:Synths/aumu,dls ,appl");
+            juce::String error = "pending";
+            if (found.size() == 1)
+                p.hosted.load (*found[0], [&] (const juce::String& e) { error = e; });
+            pumpUntil ([&] { return error != "pending"; });
+            p.getStateInformation (saved);
+        }
+
+        std::vector<std::pair<juce::String, juce::MemoryBlock>> states { { "DLSMusicDevice state", saved } };
+        if (auto* path = std::getenv ("SPIKE_STATE_FILE"))   // e.g. a state extracted from a Live set
+        {
+            juce::MemoryBlock fromFile;
+            juce::File (path).loadFileAsData (fromFile);
+            states.push_back ({ "state from " + juce::File (path).getFileName(), fromFile });
+        }
+
+        juce::AudioPluginFormatManager fm;
+        juce::addDefaultFormatsToManager (fm);
+        const auto vst3 = juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                              .getChildFile ("Library/Audio/Plug-Ins/VST3/ChordismSpike.vst3").getFullPathName();
+
+        for (const auto& [label, blob] : states)
+        {
+            for (bool stateBeforePrepare : { true, false })
+            {
+                juce::String error;
+                auto inst = loadBuilt (fm, "VST3", vst3, error);
+                if (inst == nullptr) { check (false, "VST3 created " + error.toStdString()); continue; }
+
+                FakePlayHead ph;
+                const auto hostState = asVst3HostState (blob);
+                if (stateBeforePrepare)
+                {
+                    inst->setStateInformation (hostState.getData(), (int) hostState.getSize());
+                    prepare (*inst, ph, 48000.0, 256);
+                }
+                else
+                {
+                    prepare (*inst, ph, 48000.0, 256);
+                    inst->setStateInformation (hostState.getData(), (int) hostState.getSize());
+                }
+
+                // Give the async instrument load time to finish, then play a chord.
+                float peak = 0.0f;
+                int64_t clock = 0;
+                for (int attempt = 0; attempt < 30 && peak < 1.0e-3f; ++attempt)
+                {
+                    pumpUntil ([] { return false; }, 100);
+                    const auto first = clock;
+                    run (*inst, ph, 48000.0, 120.0, 256, 256 * 40, clock, false, [first] (int64_t start, int, juce::MidiBuffer& m)
+                    {
+                        if (start == first) m.addEvents (noteAt (60, 0, true), 0, -1, 0);
+                    }, &peak);
+                    run (*inst, ph, 48000.0, 120.0, 256, 256 * 4, clock, false, [] (int64_t, int, juce::MidiBuffer& m)
+                    {
+                        m.addEvents (noteAt (60, 0, false), 0, -1, 0);
+                    });
+                }
+
+                check (peak > 1.0e-3f, (label + (stateBeforePrepare ? ", state set before prepare (Live's order)" : ", state set after prepare")
+                                        + ": hosted instrument plays after restore (peak " + juce::String (peak, 4) + ")").toStdString());
+                inst->releaseResources();
+            }
         }
     }
 

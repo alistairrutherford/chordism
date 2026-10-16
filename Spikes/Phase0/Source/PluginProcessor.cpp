@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "SpikeLog.h"
 #include <cmath>
 
 namespace
@@ -28,9 +29,12 @@ SpikeProcessor::SpikeProcessor()
       instanceId (SharedSession::get().nextInstanceId.fetch_add (1))
 {
     SharedSession::get().instanceCount.fetch_add (1);
+    member = SharedSession::get().join (instanceId);
 
     for (auto& chord : heldChords)
         chord.fill (-1);
+
+    hosted.log = [this] (const juce::String& text) { SpikeLog::write (instanceId, text); };
 
     startTimerHz (30);
 }
@@ -38,7 +42,26 @@ SpikeProcessor::SpikeProcessor()
 SpikeProcessor::~SpikeProcessor()
 {
     stopTimer();
+    midiOut.close();
+    SharedSession::get().leave (member);
     SharedSession::get().instanceCount.fetch_sub (1);
+    SpikeLog::write (instanceId, "destroyed");
+}
+
+void SpikeProcessor::markStateChanged (const juce::String& why)
+{
+    updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+    SpikeLog::write (instanceId, "state changed (" + why + "): told host");
+}
+
+juce::String SpikeProcessor::getPortStatus() const
+{
+    if (! usePort.load())
+        return "off";
+    if (! midiOut.isOpen())
+        return midiOut.getLastError() != 0 ? "error " + juce::String (midiOut.getLastError()) : juce::String ("opening...");
+    return midiOut.getName() + "  (" + juce::String ((int) midiOut.getNumSent()) + " sent, "
+         + (usingHostClock.load() ? "host clock" : "processing clock") + ")";
 }
 
 void SpikeProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
@@ -212,6 +235,19 @@ void SpikeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     samplesPerBeat = sampleRate * 60.0 / bpm;
     blockPpq = ppq;
 
+    // Timestamp for the virtual port: the host's clock for this block if it's on
+    // the mach clock (within 200 ms of now), otherwise the processing time.
+    int64_t blockNs = VirtualMidiOut::nowNs();
+    bool hostClock = false;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            if (auto h = pos->getHostTimeNs(); h.hasValue() && std::llabs ((int64_t) *h - blockNs) < 200000000)
+            {
+                blockNs = (int64_t) *h;
+                hostClock = true;
+            }
+    usingHostClock.store (hostClock);
+
     if (wasPlaying && ! isPlaying)
     {
         flushPendingOffs (generated, 0);   // recorded while blockPlaying is still true
@@ -341,6 +377,16 @@ void SpikeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     if (isPlaying)
         recorder.setPosition (endPpq, bpm, num, den);
 
+    // Spike (1b): the same MIDI goes out of the CoreMIDI virtual port, stamped
+    // with when each event falls in this block.
+    if (midiOut.isOpen())
+    {
+        const double nsPerSample = 1.0e9 / sampleRate;
+        const auto offsetNs = (int64_t) (portOffsetMs.load() * 1.0e6);
+        for (const auto meta : generated)
+            midiOut.push (meta.data, meta.numBytes, blockNs + (int64_t) (meta.samplePosition * nsPerSample) + offsetNs);
+    }
+
     // Copy rather than swap: swapping would hand `generated` the host's (possibly
     // small) buffer and make the next block allocate.
     midi.clear();
@@ -354,6 +400,36 @@ void SpikeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
 void SpikeProcessor::timerCallback()
 {
     recorder.drain();
+
+    if (! loggedFormat)
+    {
+        loggedFormat = true;
+        SpikeLog::write (instanceId, juce::String ("loaded as ") + getWrapperTypeDescription (wrapperType)
+                                     + " in " + juce::PluginHostType().getHostDescription());
+    }
+
+    const bool wantPort = usePort.load();
+    if (wantPort && ! midiOut.isOpen() && midiOut.getLastError() == 0)
+    {
+        midiOut.open (savedPortIndex);
+        SpikeLog::write (instanceId, midiOut.isOpen() ? "port opened: " + midiOut.getName()
+                                                      : "port open FAILED, OSStatus " + juce::String (midiOut.getLastError()));
+    }
+    else if (! wantPort && midiOut.isOpen())
+    {
+        savedPortIndex = midiOut.getIndex();
+        midiOut.close();
+        SpikeLog::write (instanceId, "port closed");
+    }
+
+    if (member != nullptr)
+    {
+        member->key.store (getEffectiveKey());
+        member->sync.store (syncKey.load());
+    }
+
+    if (hosted.consumeDirty())
+        markStateChanged ("hosted instrument edited");
 }
 
 juce::AudioProcessorEditor* SpikeProcessor::createEditor()
@@ -368,18 +444,44 @@ void SpikeProcessor::getStateInformation (juce::MemoryBlock& destData)
     xml.setAttribute ("key", getEffectiveKey());
     xml.setAttribute ("localKey", localKey.load());
     xml.setAttribute ("testPattern", testPattern.load());
+    xml.setAttribute ("usePort", usePort.load());
+    xml.setAttribute ("portIndex", midiOut.isOpen() ? midiOut.getIndex() : savedPortIndex);
+    xml.setAttribute ("portOffsetMs", (double) portOffsetMs.load());
 
-    if (auto hostedXml = hosted.saveState())
+    auto hostedXml = hosted.saveState();
+    juce::String hostedInfo = "no hosted instrument";
+    if (hostedXml != nullptr)
+    {
+        juce::PluginDescription d;
+        if (auto* descXml = hostedXml->getChildByName ("PLUGIN"))
+            d.loadFromXml (*descXml);
+        hostedInfo = "hosted " + d.name + " (" + d.pluginFormatName + "), state "
+                   + juce::String (hostedXml->getStringAttribute ("state").length()) + " chars"
+                   + (hosted.isLoaded() ? "" : "  [restore pending/failed: kept as saved]");
         xml.addChildElement (hostedXml.release());
+    }
 
     copyXmlToBinary (xml, destData);
+    SpikeLog::write (instanceId, "getState: " + juce::String ((int) destData.getSize()) + " bytes, key "
+                                 + juce::String (getEffectiveKey()) + ", sync " + (syncKey.load() ? "on" : "off") + ", " + hostedInfo);
 }
 
 void SpikeProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr || ! xml->hasTagName ("ChordismSpike"))
+    {
+        SpikeLog::write (instanceId, "setState: " + juce::String (sizeInBytes) + " bytes, NOT recognised");
         return;
+    }
+
+    SpikeLog::write (instanceId, "setState: " + juce::String (sizeInBytes) + " bytes, sync "
+                                 + (xml->getBoolAttribute ("syncKey", true) ? "on" : "off")
+                                 + ", hosted " + (xml->getChildByName ("Hosted") != nullptr ? "yes" : "no"));
+
+    usePort.store (xml->getBoolAttribute ("usePort", true));
+    savedPortIndex = xml->getIntAttribute ("portIndex", 0);
+    portOffsetMs.store ((float) xml->getDoubleAttribute ("portOffsetMs", 0.0));
 
     syncKey.store (xml->getBoolAttribute ("syncKey", true));
     localKey.store (juce::jlimit (0, 11, xml->getIntAttribute ("localKey", 0)));

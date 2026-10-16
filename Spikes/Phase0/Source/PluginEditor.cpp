@@ -77,17 +77,45 @@ SpikeEditor::SpikeEditor (SpikeProcessor& p)
         const int key = keyBox.getSelectedItemIndex();
         processor.syncKey.store (syncToggle.getToggleState());
         processor.setKeyFromUi (juce::jmax (0, key));
+        processor.markStateChanged ("sync toggled");
     };
     addAndMakeVisible (syncToggle);
 
     keyBox.addItemList (keyNames, 1);
     keyBox.setSelectedItemIndex (processor.getEffectiveKey(), juce::dontSendNotification);
-    keyBox.onChange = [this] { processor.setKeyFromUi (keyBox.getSelectedItemIndex()); };
+    keyBox.onChange = [this]
+    {
+        processor.setKeyFromUi (keyBox.getSelectedItemIndex());
+        processor.markStateChanged ("key changed");
+    };
     addAndMakeVisible (keyBox);
 
     testToggle.setToggleState (processor.testPattern.load(), juce::dontSendNotification);
-    testToggle.onClick = [this] { processor.testPattern.store (testToggle.getToggleState()); };
+    testToggle.onClick = [this]
+    {
+        processor.testPattern.store (testToggle.getToggleState());
+        processor.markStateChanged ("test pattern toggled");
+    };
     addAndMakeVisible (testToggle);
+
+    portToggle.setToggleState (processor.usePort.load(), juce::dontSendNotification);
+    portToggle.onClick = [this]
+    {
+        processor.usePort.store (portToggle.getToggleState());
+        processor.markStateChanged ("port toggled");
+    };
+    addAndMakeVisible (portToggle);
+    addAndMakeVisible (portStatus);
+
+    offsetLabel.setText ("Port offset (ms)", juce::dontSendNotification);
+    addAndMakeVisible (offsetLabel);
+    offsetSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    offsetSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 60, 20);
+    offsetSlider.setRange (-100.0, 100.0, 0.5);
+    offsetSlider.setValue (processor.portOffsetMs.load(), juce::dontSendNotification);
+    offsetSlider.onValueChange = [this] { processor.portOffsetMs.store ((float) offsetSlider.getValue()); };
+    offsetSlider.onDragEnd = [this] { processor.markStateChanged ("port offset changed"); };
+    addAndMakeVisible (offsetSlider);
 
     hostTitle.setText ("Hosted instrument", juce::dontSendNotification);
     hostTitle.setFont (juce::FontOptions (15.0f, juce::Font::bold));
@@ -119,13 +147,20 @@ SpikeEditor::SpikeEditor (SpikeProcessor& p)
         hostStatus.setText ("Loading " + list[index].name + "...", juce::dontSendNotification);
         processor.hosted.load (list[index], [safe = juce::Component::SafePointer<SpikeEditor> (this)] (const juce::String& error)
         {
-            if (safe != nullptr)
-                safe->hostStatus.setText (error.isEmpty() ? "Loaded" : "Error: " + error, juce::dontSendNotification);
+            if (safe == nullptr)
+                return;
+            safe->hostStatus.setText (error.isEmpty() ? "Loaded" : "Error: " + error, juce::dontSendNotification);
+            if (error.isEmpty())
+                safe->processor.markStateChanged ("hosted instrument loaded");
         });
     };
     addAndMakeVisible (loadButton);
 
-    unloadButton.onClick = [this] { processor.hosted.unload(); };
+    unloadButton.onClick = [this]
+    {
+        processor.hosted.unload();
+        processor.markStateChanged ("hosted instrument unloaded");
+    };
     addAndMakeVisible (unloadButton);
 
     editorButton.onClick = [this] { processor.hosted.showEditor(); };
@@ -134,7 +169,7 @@ SpikeEditor::SpikeEditor (SpikeProcessor& p)
     addAndMakeVisible (exportHandle);
 
     refreshPluginList();
-    setSize (680, 470);
+    setSize (700, 610);
     startTimerHz (10);
     timerCallback();
 }
@@ -166,7 +201,7 @@ void SpikeEditor::resized()
 
     title.setBounds (r.removeFromTop (28));
     r.removeFromTop (6);
-    status.setBounds (r.removeFromTop (92));
+    status.setBounds (r.removeFromTop (190));
     r.removeFromTop (10);
 
     auto row = r.removeFromTop (26);
@@ -174,6 +209,14 @@ void SpikeEditor::resized()
     keyBox.setBounds (row.removeFromLeft (90));
     r.removeFromTop (6);
     testToggle.setBounds (r.removeFromTop (26));
+    r.removeFromTop (6);
+    row = r.removeFromTop (26);
+    portToggle.setBounds (row.removeFromLeft (130));
+    portStatus.setBounds (row);
+    r.removeFromTop (4);
+    row = r.removeFromTop (26);
+    offsetLabel.setBounds (row.removeFromLeft (130));
+    offsetSlider.setBounds (row.removeFromLeft (300));
     r.removeFromTop (14);
 
     hostTitle.setBounds (r.removeFromTop (22));
@@ -215,8 +258,26 @@ void SpikeEditor::timerCallback()
          << "   bar " << (beat / 4 + 1) << " beat " << (beat % 4 + 1) << " (4/4)\n"
          << "MIDI: last in " << liveNoteName (processor.lastInputNote.load())
          << "   last out " << liveNoteName (processor.lastOutputNote.load())
-         << "   note-ons sent " << processor.outputNoteOns.load();
+         << "   note-ons sent " << processor.outputNoteOns.load() << "\n"
+         << "Instances (sync: Key follows the others only when Sync is on for both):";
+
+    for (auto& m : session.members)
+    {
+        const int id = m.id.load();
+        if (id == 0)
+            continue;
+        text << "\n  #" << id << (id == processor.instanceId ? " (this)" : "       ")
+             << "  key " << keyNames[m.key.load()] << "   sync " << (m.sync.load() ? "ON" : "OFF  <-- won't follow");
+    }
+
     status.setText (text, juce::dontSendNotification);
+    portStatus.setText (processor.getPortStatus(), juce::dontSendNotification);
+
+    if (syncToggle.getToggleState() != processor.syncKey.load())
+        syncToggle.setToggleState (processor.syncKey.load(), juce::dontSendNotification);
+
+    if (processor.hosted.getRestoreError().isNotEmpty())
+        hostStatus.setText ("Restore failed: " + processor.hosted.getRestoreError(), juce::dontSendNotification);
 
     if (! keyBox.isPopupActive())
         keyBox.setSelectedItemIndex (processor.getEffectiveKey(), juce::dontSendNotification);

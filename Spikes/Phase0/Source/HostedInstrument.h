@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <atomic>
 #include <functional>
 #include <memory>
 
@@ -26,10 +27,18 @@ public:
     bool isLoaded() const { return slot != nullptr; }
     void showEditor();
 
+    // While a restore is still loading (or if it failed), saveState() returns the
+    // saved XML unchanged, so a save in between never drops the hosted instrument.
     std::unique_ptr<juce::XmlElement> saveState() const;
     void restoreState (const juce::XmlElement& xml, std::function<void (const juce::String&)> done = {});
+    juce::String getRestoreError() const { return restoreError; }
+
+    // True (once) if the hosted instrument's parameters or state changed since the
+    // last call, so the outer plugin can tell the host its state is dirty.
+    bool consumeDirty() noexcept { return dirty.exchange (false); }
 
     juce::AudioPluginFormatManager& getFormatManager() { return formats; }
+    juce::AudioPluginInstance* getInstance() const { return slot != nullptr ? slot->instance.get() : nullptr; }
 
     // Called from the outer plugin's prepareToPlay / releaseResources.
     void prepare (double sampleRate, int maxBlockSize);
@@ -41,6 +50,7 @@ public:
     bool process (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi) noexcept;
 
     std::function<void()> onChange;     // message thread: a plugin was loaded or unloaded
+    std::function<void (const juce::String&)> log;   // message thread diagnostics
 
 private:
     struct Slot
@@ -60,6 +70,19 @@ private:
 
     std::unique_ptr<Slot> slot;         // guarded by `lock` against the audio thread
     juce::SpinLock lock;
+
+    struct ChangeListener : juce::AudioProcessorListener
+    {
+        explicit ChangeListener (std::atomic<bool>& f) : flag (f) {}
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override { flag.store (true); }
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override { flag.store (true); }
+        std::atomic<bool>& flag;
+    };
+
+    std::atomic<bool> dirty { false };
+    ChangeListener changeListener { dirty };
+    std::unique_ptr<juce::XmlElement> pendingRestore;
+    juce::String restoreError;
 
     std::unique_ptr<juce::DocumentWindow> editorWindow;
     double sampleRate = 44100.0;

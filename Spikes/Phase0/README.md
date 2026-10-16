@@ -7,9 +7,10 @@ not meant to be reused as is. The real project starts clean in Phase 1.
 | # | Question | What the spike does |
 |---|---|---|
 | 1 | Can another Live track take the plugin's **VST3 MIDI output** and record it on time? | White keys play the diatonic triad of the current major key. Black keys pass through. **Test pattern** plays I IV V vi (one chord per bar, struck on every beat, 1/8 long) while the transport runs. |
-| 2 | Can the plugin **host an AU/VST3 instrument** inside Live? | *Scan instruments* → pick one → *Load*. The generated MIDI plays the hosted instrument, whose audio is the plugin's output. *Show editor* opens its window. The choice is saved with the set. |
+| 1b | If not: does a **CoreMIDI virtual port** ("Chordism Spike Out n") record on time instead? | The same MIDI is sent out of a virtual port, stamped with the time of each event. *Port offset* shifts the stamps to calibrate. This is NoteCap's port code. |
+| 2 | Can the plugin **host an AU/VST3 instrument** inside Live, and get it back when the set reopens? | *Scan instruments* → pick one → *Load*. The generated MIDI plays the hosted instrument, whose audio is the plugin's output. *Show editor* opens its window. The instrument and its settings are saved with the set. |
 | 3 | Does a **dragged-out .mid** land in Live as a clip? | Records the generated MIDI since the last transport start. The drag handle exports the completed bars (32 max) as `Chordism Export.mid`. |
-| 4 | Do instances **share process-wide state** (Instance Sync)? | The status panel shows the process ID and how many instances of this binary are in the process. With *Sync key* on, changing the key on one instance changes it on all of them. |
+| 4 | Do instances **share process-wide state** (Instance Sync)? | The status panel lists every instance in the process, with its key and Sync setting. With *Sync key* on for both, changing the key on one changes the other. |
 
 ## Automated results (already run)
 
@@ -21,47 +22,51 @@ loads the built bundles the way a host does. **All checks pass:**
 - Sync between instances in one process. An unsynced instance keeps its own key.
 - Export: 4.5 bars played → 4 bars, 48 notes on the quarter-note grid, 960 PPQ, tempo meta event. A new transport start resets it.
 - **No heap allocations** in `processBlock`.
-- Hosting Apple's DLSMusicDevice: silent with no notes, audible with a chord, restored from saved state.
-- **The built VST3 sends its chords as MIDI output events** to a host. This is what Live's "MIDI From" routing reads. Two VST3 instances share the static session.
+- Hosting: Apple's DLSMusicDevice plays, and is restored from saved state.
+- **Hosted settings round-trip:** every parameter of Juno106 (AU and VST3) is changed, saved and restored into a new instance, and all 38 come back.
+- **Reopening a set, as Live does it:** the built VST3 is given its saved state *before* being prepared. The hosted instrument comes back and plays. This was also run with the exact state from your `spike1_test` set, with the hosted Juno.
+- A hosted instrument that **fails to restore is kept** in the saved state, so the next save doesn't drop it.
+- **The virtual port** delivers the same chords, with timestamps at the block time plus the event's offset.
+- **The built VST3 sends its chords as MIDI output events** to a host. Two VST3 instances share the static session.
 - `auval -v aumu CzSp ARut` passes.
-- *Info:* a JUCE host sees **no MIDI output from the AU instrument** build. Live ignores AU MIDI output anyway. It only matters for the Logic `aumi` target, which gets its own check in Phase 1.
+- *Info:* a JUCE host sees **no MIDI output from the AU instrument** build. Live ignores AU MIDI output anyway. It only matters for the Logic `aumi` target.
 
-## Live 12 checklist (only Live can answer these)
+## Round 1 in Live 12.4.6 (2026-10-16): what the set and Live's log show
 
-Before you start: Live → Settings → **Plug-Ins**: turn on *Use Audio Units v2*
-and *Use VST3 Plug-In System Folders*, then **Rescan**. The plugin appears
-under Plug-Ins → *Alistair Rutherford* → **Chordism Spike**. If it's missing,
-run `killall -9 AudioComponentRegistrar` and rescan.
+| # | Reported | Cause |
+|---|---|---|
+| 1 | Track 2 didn't play triads | Track 2's input was saved as **MIDI From "1-Chordism Spike" / "Post FX"**, not "/ Chordism Spike". Live never offered the plugin as a MIDI source, so track 2 got the keys from *before* the plugin. This matches vendor guidance that Live takes plugin MIDI out from **VST2** builds, not VST3 or AU. We can't build VST2 (no SDK). Next: **try the virtual port (1b)**. |
+| 2 | Hosting works, settings not persisted | The hosted Juno **was** written into every save (AU and VST3, with your edits at 13:01), and restoring from those saves works outside Live. Two gaps were fixed: the plugin never told Live its state had changed, so Live didn't know the set needed saving; and a save made while the restore was still loading could drop the instrument. *Also seen:* the Juno on track 2 (a plain Live device, not hosted) had your edits in the 12:58 save but defaults again after you reopened at 12:58:34. That points at the Juno or Live, not Chordism. Round 2 tests it separately. |
+| 4 | Key change not synced | In the saved set, the instance on **track 1 had Sync key *off*** (key C#), and track 2 had it on (key D). Live runs both instances in one process, so the shared state works. Each window now lists every instance with its Sync setting. |
 
-### 1. VST3 MIDI output → another track (the main routing route)
-- [ ] Track 1 (MIDI): load **Chordism Spike (VST3)**. Set Monitor to *In* so it receives your controller.
-- [ ] Track 2 (MIDI): load any instrument (e.g. Drift). Set **MIDI From → "1-MIDI" → "Chordism Spike"**. *Pass if the plugin is offered in the second dropdown.* Set Monitor to *In*.
-- [ ] Play white keys on the controller: track 2 plays triads.
-- [ ] Turn on **Test pattern**. Arm track 2 (Record Quantization **off**), then record 4 bars. *Pass if* the clip has C F G Am, one chord per bar, with **every chord starting exactly on the beat** (zoom in) and 1/8 long.
-- [ ] Repeat with a different buffer size (Settings → Audio → Buffer Size, e.g. 128 and 1024). Is it still exactly on the beat?
-- [ ] Record on **track 1** instead: you should get only the keys you pressed (the trigger notes), not the chords. That's the expected ChordPrism-style behaviour.
+## Live 12 checklist, round 2
 
-### 2. Hosting an instrument inside the plugin
-- [ ] On a new MIDI track, load **Chordism Spike (AU)**. Click **Scan instruments**. *Note:* how long it took, and whether anything crashed.
-- [ ] Choose **Juno106 (AudioUnit)** → **Load**. Play keys: you should hear triads through the Juno.
-- [ ] **Show editor**: does the Juno window open, appear in front of Live, and work?
-- [ ] Save the set, quit Live, reopen it. Is the Juno still loaded, with the same sound settings?
-- [ ] Repeat with **Chordism Spike (VST3)** hosting **Juno106 (VST3)**.
+**First, quit and restart Live:** it keeps the previous build loaded until it
+restarts. Every save, restore, hosting and port event is now written to
+`~/Library/Logs/ChordismSpike.log`, so I can read what happened afterwards.
 
-### 3. Drag MIDI out
-- [ ] With Test pattern on, play at least 2 full bars, then stop. The handle reads *Drag MIDI out (N completed bars)*.
-- [ ] Drag it onto an empty MIDI track in **Arrangement view**. *Pass if* a clip appears at the drop point with chords on the beats and the right length.
-- [ ] Drag it into a **Session view** clip slot as well.
+### 1. MIDI to another track
+- [ ] **1a, VST3 (recheck):** Track 1: **Chordism Spike (VST3)**, Monitor *In*. Track 2: an instrument. Open track 2's **MIDI From** second dropdown (below "1-Chordism Spike"). *Does it list "Chordism Spike", or only "Pre FX" / "Post FX"?*
+- [ ] **1b, virtual port:** Chordism's window shows *CoreMIDI port: Chordism Spike Out 1*. In Live → Settings → **Link, Tempo & MIDI**, set the **Track** switch to On for the input **Chordism Spike Out 1**. On track 2, set **MIDI From → Chordism Spike Out 1**, Monitor *In*. Play keys: does track 2 play triads?
+- [ ] Turn on **Test pattern**. Arm track 2 (Record Quantization **off**) and record 4 bars. Zoom in: is each chord exactly on the beat? If they're consistently early or late, set **Port offset** to the opposite amount, record again, and note the value that lines them up.
+- [ ] Repeat at buffer sizes 128 and 1024. Does the offset change?
+
+### 2. Hosting: does it come back?
+- [ ] Chordism Spike (VST3) on a track → **Scan** → load **Juno106 (VST3)**. In the Juno window, change something you'll recognise (Chorus I on, a long attack).
+- [ ] Is the set now marked as changed (asterisk on the set name / Save prompt on close)?
+- [ ] **Save**, close the set (File → New), then reopen it. Does Chordism show *Playing: Juno 106-ARP*, and does the Juno still have your edits?
+- [ ] Repeat with **Juno106 (AU)** hosted.
+- [ ] **Juno on its own:** put Juno106 (AU) directly on a track (no Chordism), change a knob, save, reopen. Did the knob survive? (This separates a Juno issue from a Chordism one.)
+
+### 3. Drag MIDI out: passed in round 1. Nothing to do.
 
 ### 4. Instance Sync
-- [ ] Load Chordism Spike **VST3** on two tracks and open both windows. Are the **PIDs the same**, and does each show *instances … in this process: 2*?
-- [ ] Change the key on one: does the other's key follow, and does its output change?
-- [ ] Mixed formats (one AU, one VST3): expected **not** to sync, because they are separate binaries. Note what the status shows.
+- [ ] Chordism Spike **VST3** on two tracks. In each window, the instance list should show both, with **Sync ON**.
+- [ ] Change the key in one window: does the other window's key follow, and its output change?
 
 ### Report back
-For each section: pass or fail, plus anything odd (e.g. "chords 3 ms late at
-buffer 1024", "Juno editor opens behind Live"). Those results decide the
-routing approach and update PLAN.md §3.
+Pass or fail for each item, plus anything odd. I'll also read
+`~/Library/Logs/ChordismSpike.log` and the saved set.
 
 ## Building
 

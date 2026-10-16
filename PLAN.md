@@ -351,7 +351,13 @@ chordism/
 
 | Phase | State | Notes |
 |---|---|---|
-| 0. Feasibility | **Spike built and automatically verified. Waiting for the Live test.** | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` passes, and `Tests/run_tests.sh` passes. Verified so far: sample-accurate beat timing at 4 rates and block sizes, the built VST3 emits MIDI output events, hosting works (DLSMusicDevice), export, sync between instances, and no allocations on the audio thread. The Live checklist is in `Spikes/Phase0/README.md`. |
+| 0. Feasibility | **Live round 1 done (2026-10-16). Round 2 waiting.** | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Round 1 findings and the round 2 checklist are in `Spikes/Phase0/README.md`. |
 
-**Found so far:** a JUCE host gets no MIDI output from the AU *instrument* build. This doesn't matter for Live, but the Logic `aumi` target needs its own check in Phase 1.
+**Round 1 in Live 12.4.6:**
+- **Drag MIDI out: works.**
+- **VST3 MIDI out → another track: not offered by Live.** Track 2 could only pick "Pre FX"/"Post FX" from the Chordism track. Vendor guidance (Scaler, Blue Cat) says Live takes plugin MIDI out from VST2, and we can't build VST2 (no SDK, and Steinberg no longer licenses it). Round 2 tests the **CoreMIDI virtual port** route (NoteCap's code). If that records on time, it becomes the primary route in §3, with in-plugin hosting as the second route.
+- **Hosting: the instrument and its settings are saved,** and restoring works outside Live (including from the saved set). The spike now tells Live when its state changes, keeps a hosted instrument that hasn't finished restoring (or failed to) in the next save, and logs save/restore to `~/Library/Logs/ChordismSpike.log`. Round 2 retests in Live. The Juno106 on its own also lost edits across a reopen, so that is being checked separately.
+- **Instance Sync: works in principle.** Both instances share one process, but Sync was off on one of them. The UI now lists every instance with its Sync setting. Round 2 retests.
+
+**Other findings:** a JUCE host gets no MIDI output from the AU *instrument* build. That doesn't matter for Live, but the Logic `aumi` target needs its own check in Phase 1.
 `pluginval` isn't installed on this Mac. Set it up in Phase 1 (CI).

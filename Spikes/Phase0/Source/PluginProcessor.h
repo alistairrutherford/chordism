@@ -4,6 +4,7 @@
 #include "HostedInstrument.h"
 #include "MidiExport.h"
 #include "SharedSession.h"
+#include "midi/VirtualMidiOut.h"
 #include <array>
 #include <atomic>
 #include <limits>
@@ -14,6 +15,8 @@
 //   2. Can the plugin host an AU/VST3 instrument and play it?
 //   3. Does a .mid file dragged out of the plugin land in Live as a clip?
 //   4. Do two instances share process-wide state (Instance Sync)?
+//   1b. If Live won't route VST3 MIDI out: does a CoreMIDI virtual port
+//       ("Chordism Spike Out n") record on time instead?
 //
 // MIDI behaviour: a white key below or above anything plays the diatonic triad of
 // the current major key on that degree; black keys pass through. "Test pattern"
@@ -54,6 +57,12 @@ public:
     int getEffectiveKey() const noexcept;
     std::atomic<bool> syncKey { true };
     std::atomic<bool> testPattern { false };
+    std::atomic<bool> usePort { true };          // CoreMIDI virtual output port
+    std::atomic<float> portOffsetMs { 0.0f };    // timestamp calibration for the port
+
+    // Tells the host the plugin state changed (so Live marks the set as modified
+    // and asks to save it). Message thread.
+    void markStateChanged (const juce::String& why);
 
     // ---- status for the UI and tests ----
     const int instanceId;
@@ -61,6 +70,10 @@ public:
     std::atomic<double> currentBpm { 120.0 }, currentPpq { 0.0 };
     std::atomic<int> lastInputNote { -1 }, lastOutputNote { -1 };
     std::atomic<int> outputNoteOns { 0 };
+    std::atomic<bool> usingHostClock { false };
+
+    juce::String getPortStatus() const;
+    uint32_t getPortEndpoint() const noexcept { return midiOut.getEndpoint(); }   // tests
 
     HostedInstrument hosted;
     ExportRecorder recorder;
@@ -81,6 +94,11 @@ private:
     double sampleToPpq (int sample) const noexcept;
 
     std::atomic<int> localKey { 0 };
+
+    VirtualMidiOut midiOut;
+    int savedPortIndex = 0;
+    SharedSession::Member* member = nullptr;
+    bool loggedFormat = false;
 
     // audio-thread state
     double sampleRate = 44100.0;

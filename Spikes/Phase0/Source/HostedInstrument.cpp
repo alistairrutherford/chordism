@@ -46,6 +46,9 @@ HostedInstrument::~HostedInstrument()
         const juce::SpinLock::ScopedLockType l (lock);
         std::swap (old, slot);
     }
+
+    if (old != nullptr)
+        old->instance->removeListener (&changeListener);
 }
 
 void HostedInstrument::scan()
@@ -117,6 +120,7 @@ void HostedInstrument::load (const juce::PluginDescription& desc, std::function<
 
 void HostedInstrument::unload()
 {
+    pendingRestore.reset();
     swapIn (nullptr);
 }
 
@@ -142,13 +146,19 @@ void HostedInstrument::swapIn (std::unique_ptr<Slot> newSlot)
 {
     closeEditor();
 
+    if (newSlot != nullptr)
+        newSlot->instance->addListener (&changeListener);
+
     {
         const juce::SpinLock::ScopedLockType l (lock);
         std::swap (slot, newSlot);
     }
 
     if (newSlot != nullptr)     // the previous instrument, now off the audio thread
+    {
+        newSlot->instance->removeListener (&changeListener);
         newSlot->instance->releaseResources();
+    }
 
     newSlot.reset();
 
@@ -240,7 +250,7 @@ void HostedInstrument::closeEditor()
 std::unique_ptr<juce::XmlElement> HostedInstrument::saveState() const
 {
     if (slot == nullptr)
-        return nullptr;
+        return pendingRestore != nullptr ? std::make_unique<juce::XmlElement> (*pendingRestore) : nullptr;
 
     auto xml = std::make_unique<juce::XmlElement> ("Hosted");
     xml->addChildElement (slot->description.createXml().release());
@@ -263,5 +273,23 @@ void HostedInstrument::restoreState (const juce::XmlElement& xml, std::function<
 
     juce::MemoryBlock state;
     state.fromBase64Encoding (xml.getStringAttribute ("state"));
-    load (desc, std::move (done), &state);
+
+    pendingRestore = std::make_unique<juce::XmlElement> (xml);
+    restoreError.clear();
+    if (log) log ("restore: loading " + desc.name + " (" + desc.pluginFormatName + "), state " + juce::String ((int) state.getSize()) + " bytes");
+
+    std::weak_ptr<bool> weakAlive = alive;
+    load (desc, [this, weakAlive, name = desc.name, done = std::move (done)] (const juce::String& error)
+    {
+        if (auto a = weakAlive.lock(); a == nullptr || ! *a)
+            return;
+
+        if (error.isEmpty())
+            pendingRestore.reset();
+        else
+            restoreError = error;
+
+        if (log) log ("restore: " + name + (error.isEmpty() ? juce::String (" loaded") : " FAILED: " + error));
+        if (done) done (error);
+    }, &state);
 }

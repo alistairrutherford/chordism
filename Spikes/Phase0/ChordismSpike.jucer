@@ -25,6 +25,13 @@
       <FILE id="fExc01" name="MidiExport.cpp" compile="1" resource="0" file="Source/MidiExport.cpp"/>
       <FILE id="fExh01" name="MidiExport.h" compile="0" resource="0" file="Source/MidiExport.h"/>
       <FILE id="fShh01" name="SharedSession.h" compile="0" resource="0" file="Source/SharedSession.h"/>
+      <FILE id="fLgh01" name="SpikeLog.h" compile="0" resource="0" file="Source/SpikeLog.h"/>
+      <GROUP id="midiGp" name="midi">
+        <FILE id="fVmc01" name="VirtualMidiOut.cpp" compile="1" resource="0"
+              file="Source/midi/VirtualMidiOut.cpp"/>
+        <FILE id="fVmh01" name="VirtualMidiOut.h" compile="0" resource="0"
+              file="Source/midi/VirtualMidiOut.h"/>
+      </GROUP>
     </GROUP>
   </MAINGROUP>
   <MODULES>

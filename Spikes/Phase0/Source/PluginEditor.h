@@ -42,6 +42,10 @@ private:
     juce::ComboBox keyBox;
     juce::ToggleButton testToggle { "Test pattern: I IV V vi on every beat while playing" };
 
+    juce::ToggleButton portToggle { "CoreMIDI port" };
+    juce::Label portStatus, offsetLabel;
+    juce::Slider offsetSlider;
+
     juce::Label hostTitle, hostStatus;
     juce::TextButton scanButton { "Scan instruments" }, loadButton { "Load" },
                      unloadButton { "Unload" }, editorButton { "Show editor" };

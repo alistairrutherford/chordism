@@ -21,3 +21,6 @@ Builds/MacOSX/*.xcodeproj/xcuserdata/
 
 # Installer output
 dist/
+
+# Ableton Live test sets
+spike1_test Project/
