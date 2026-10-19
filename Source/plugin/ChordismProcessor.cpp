@@ -112,6 +112,9 @@ namespace chordism
         int64_t blockNs = 0;
         const Transport transport = readTransport (blockNs);
 
+        // The editor snapshot first: a state restore publishes it after setting the parameters,
+        // so reading the parameters second never pairs restored edits with the old group.
+        const ChordEdits& edits = chordEditor.read();
         EngineSettings settings = snapshot.engineSettings();
         if (bypassed)
         {
@@ -141,7 +144,7 @@ namespace chordism
         }
 
         output.clear();
-        engine.process (settings, transport, input.begin(), input.size(), numSamples, output);
+        engine.process (settings, edits, transport, input.begin(), input.size(), numSamples, output);
 
         const bool toPort = port.isOpen() && snapshot.portEnabled();
         const PortTiming timing { transport.sampleRate, snapshot.portCompensation(), snapshot.portTrim() };
@@ -165,11 +168,21 @@ namespace chordism
         lastChordSlot.store (engine.getLastChordSlot(), std::memory_order_relaxed);
         soundingNotes.store (engine.getVoices().soundingNotes(), std::memory_order_relaxed);
         transportPlaying.store (transport.playing, std::memory_order_relaxed);
+
+        ChordDisplay now { engine.getChords(), engine.getChordContext(), engine.getLastChordSlot(), engine.getActiveShifter() };
+        if (! (now == lastDisplay))
+        {
+            lastDisplay = now;
+            display.publish (now);
+        }
     }
 
     //==========================================================================
     void ChordismProcessor::timerCallback()
     {
+        // Choosing a Chord Group resets the Chord Editor's edits.
+        chordEditor.sync (snapshot.chordGroup(), engine.getEditsDiscarded(), engine.getDiscardedVersion());
+
         const bool want = snapshot.portEnabled();
         if (want && ! port.isOpen() && port.getLastError() == 0)
         {
@@ -210,6 +223,7 @@ namespace chordism
     void ChordismProcessor::getStateInformation (juce::MemoryBlock& destData)
     {
         auto tree = state.copyState();
+        tree.appendChild (chordEditor.copyTree(), nullptr);
         tree.setProperty ("portIndex", port.isOpen() ? port.getIndex() : savedPortIndex, nullptr);
         tree.setProperty ("version", JucePlugin_VersionString, nullptr);
         if (auto xml = tree.createXml())
@@ -224,7 +238,12 @@ namespace chordism
 
         auto tree = juce::ValueTree::fromXml (*xml);
         savedPortIndex = tree.getProperty ("portIndex", 0);
+        const auto edits = tree.getChildWithName (ChordEditorState::treeType);
+        tree.removeChild (edits, nullptr);
+
+        // Parameters first, then the edits (made on the restored Chord Group): see run().
         state.replaceState (tree);
+        chordEditor.restore (edits, snapshot.chordGroup());
     }
 }
 

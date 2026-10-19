@@ -9,12 +9,29 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../core/engine/ChordismEngine.h"
 #include "../core/engine/PortTiming.h"
+#include "../core/engine/SnapshotExchange.h"
+#include "ChordEditorState.h"
 #include "Parameters.h"
 #include "VirtualMidiOut.h"
 #include <atomic>
 
 namespace chordism
 {
+    // What the chord zone plays now, for the editor (published by the audio thread).
+    struct ChordDisplay
+    {
+        ChordSet chords {};
+        ChordContext context;
+        int lastSlot = -1;
+        int activeShifter = -1;
+
+        bool operator== (const ChordDisplay& o) const noexcept
+        {
+            return chords == o.chords && context.key == o.context.key && context.scale == o.context.scale
+                && context.outputOctave == o.context.outputOctave && lastSlot == o.lastSlot && activeShifter == o.activeShifter;
+        }
+    };
+
     class ChordismProcessor : public juce::AudioProcessor,
                               private juce::Timer
     {
@@ -49,6 +66,10 @@ namespace chordism
         void setStateInformation (const void* data, int sizeInBytes) override;
 
         juce::AudioProcessorValueTreeState state;
+        ChordEditorState chordEditor;     // the Chord Editor's edits (not host parameters)
+
+        // Message thread, one reader (the editor).
+        const ChordDisplay& readDisplay() noexcept { return display.read(); }
 
         // Status for the editor and tests (written by the audio thread).
         juce::String getPortStatus() const;
@@ -77,6 +98,8 @@ namespace chordism
         std::atomic<double> preparedSampleRate { 44100.0 };
         std::atomic<int> preparedBlockSize { 512 };
         Transport lastTransport;
+        SnapshotExchange<ChordDisplay> display;
+        ChordDisplay lastDisplay;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordismProcessor)
     };

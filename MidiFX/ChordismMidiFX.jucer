@@ -15,6 +15,10 @@
         <FILE id="cfF001" name="Scales.h" compile="0" resource="0" file="../Source/core/theory/Scales.h"/>
         <FILE id="cfF002" name="ChordModel.h" compile="0" resource="0" file="../Source/core/theory/ChordModel.h"/>
         <FILE id="cfF003" name="ChordGroups.h" compile="0" resource="0" file="../Source/core/theory/ChordGroups.h"/>
+        <FILE id="cfF019" name="Progressions.h" compile="0" resource="0" file="../Source/core/theory/Progressions.h"/>
+        <FILE id="cfF020" name="ChordEditor.h" compile="0" resource="0" file="../Source/core/theory/ChordEditor.h"/>
+        <FILE id="cfF021" name="ChordNamer.h" compile="0" resource="0" file="../Source/core/theory/ChordNamer.h"/>
+        <FILE id="cfF022" name="RomanNumeral.h" compile="0" resource="0" file="../Source/core/theory/RomanNumeral.h"/>
       </GROUP>
       <GROUP id="cfGrp1" name="core/engine">
         <FILE id="cfF004" name="MidiEvents.h" compile="0" resource="0" file="../Source/core/engine/MidiEvents.h"/>
@@ -24,6 +28,8 @@
         <FILE id="cfF008" name="TestPattern.h" compile="0" resource="0" file="../Source/core/engine/TestPattern.h"/>
         <FILE id="cfF009" name="PortTiming.h" compile="0" resource="0" file="../Source/core/engine/PortTiming.h"/>
         <FILE id="cfF010" name="ChordismEngine.h" compile="0" resource="0" file="../Source/core/engine/ChordismEngine.h"/>
+        <FILE id="cfF023" name="Shifters.h" compile="0" resource="0" file="../Source/core/engine/Shifters.h"/>
+        <FILE id="cfF024" name="SnapshotExchange.h" compile="0" resource="0" file="../Source/core/engine/SnapshotExchange.h"/>
       </GROUP>
       <GROUP id="cfGrp2" name="plugin">
         <FILE id="cfF011" name="ChordismProcessor.h" compile="0" resource="0" file="../Source/plugin/ChordismProcessor.h"/>
@@ -32,6 +38,8 @@
         <FILE id="cfF014" name="Parameters.cpp" compile="1" resource="0" file="../Source/plugin/Parameters.cpp"/>
         <FILE id="cfF015" name="VirtualMidiOut.h" compile="0" resource="0" file="../Source/plugin/VirtualMidiOut.h"/>
         <FILE id="cfF016" name="VirtualMidiOut.cpp" compile="1" resource="0" file="../Source/plugin/VirtualMidiOut.cpp"/>
+        <FILE id="cfF025" name="ChordEditorState.h" compile="0" resource="0" file="../Source/plugin/ChordEditorState.h"/>
+        <FILE id="cfF026" name="ChordEditorState.cpp" compile="1" resource="0" file="../Source/plugin/ChordEditorState.cpp"/>
       </GROUP>
       <GROUP id="cfGrp3" name="ui">
         <FILE id="cfF017" name="ChordismEditor.h" compile="0" resource="0" file="../Source/ui/ChordismEditor.h"/>

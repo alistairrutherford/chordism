@@ -3,7 +3,11 @@
 // note later. The key presses go through the same path as the user's, so a recording of the
 // output checks routing, chord generation and timing (LiveBridge, PLAN.md §8).
 //
-// Plain C++. Stateless apart from duplicate suppression at block edges and the held key.
+// With a test shifter (0..4) it also holds that shifter's black key through every odd bar
+// (bars 1, 3, 5… counted from 0 at ppq 0): pressed on the bar line just before that beat's
+// chord key, released on the next bar line. So odd bars play shifted chords.
+//
+// Plain C++. Stateless apart from duplicate suppression at block edges and the held keys.
 #pragma once
 
 #include "InputRouter.h"
@@ -22,16 +26,33 @@ namespace chordism
 
         static int slotForBeat (int64_t beat) noexcept { return (int) (((beat % 7) + 7) % 7); }
 
-        // Adds this block's key presses to `out` (in sample order). `on` is the parameter.
+        // Quarter notes per bar.
+        static double barLength (const Transport& t) noexcept
+        {
+            return t.numerator > 0 && t.denominator > 0 ? t.numerator * 4.0 / t.denominator : 4.0;
+        }
+
+        // True if the test shifter is held on beat `beat` (ppq) with time signature `t`.
+        static bool shiftedAt (double beat, const Transport& t) noexcept
+        {
+            const auto bar = (int64_t) std::floor (beat / barLength (t) + 1.0e-9);
+            return (bar & 1) != 0;
+        }
+
+        // Adds this block's key presses to `out` (in sample order). `on` is the parameter;
+        // `shifter` is the test shifter slot, or -1.
         template <class Out>
-        void generate (bool on, const Transport& t, int numSamples, const InputRouter& router, Out& out) noexcept
+        void generate (bool on, int shifter, const Transport& t, int numSamples, const InputRouter& router, Out& out) noexcept
         {
             const double spb = t.samplesPerBeat();
             const double endPpq = t.ppq + numSamples / spb;
             const bool jumpedBack = t.ppq < lastEndPpq - 1.0e-6;
+            const int shifterKey = on ? router.shifterKeyForSlot (shifter) : -1;
 
             if (heldKey >= 0 && (! on || ! t.playing || jumpedBack))
                 releaseHeld (0, out);
+            if (heldShifter >= 0 && (! on || ! t.playing || jumpedBack || heldShifter != shifterKey))
+                releaseShifter (0, out);
 
             if (! on || ! t.playing)
             {
@@ -58,6 +79,15 @@ namespace chordism
 
                 if ((h & 1) == 0)
                 {
+                    if (shifterKey >= 0)
+                    {
+                        const bool shift = shiftedAt ((double) h * 0.5, t);
+                        if (! shift && heldShifter >= 0)
+                            releaseShifter (sample, out);
+                        else if (shift && heldShifter < 0 && out.push (MidiEvent::noteOn (0, shifterKey, velocity, sample)))
+                            heldShifter = shifterKey;
+                    }
+
                     const int key = router.chordKeyForSlot (slotForBeat (h / 2));
                     if (key >= 0 && out.push (MidiEvent::noteOn (0, key, velocity, sample)))
                         heldKey = key;
@@ -74,17 +104,27 @@ namespace chordism
                 heldKey = -1;
         }
 
+        template <class Out>
+        void releaseShifter (int sample, Out& out) noexcept
+        {
+            if (heldShifter >= 0 && out.push (MidiEvent::noteOff (0, heldShifter, sample)))
+                heldShifter = -1;
+        }
+
         void reset() noexcept
         {
             heldKey = -1;
+            heldShifter = -1;
             lastHalfBeat = std::numeric_limits<int64_t>::min();
             lastEndPpq = 0.0;
         }
 
         int getHeldKey() const noexcept { return heldKey; }
+        int getHeldShifter() const noexcept { return heldShifter; }
 
     private:
         int heldKey = -1;
+        int heldShifter = -1;
         int64_t lastHalfBeat = std::numeric_limits<int64_t>::min();
         double lastEndPpq = 0.0;
     };

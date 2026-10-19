@@ -49,6 +49,7 @@ namespace chordism
         }
 
         constexpr int whiteOffsets[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        constexpr int blackOffsets[5] = { 1, 3, 6, 8, 10 };
     }
 
     class InputRouter
@@ -89,6 +90,15 @@ namespace chordism
                 return -1;
             const int c = ((split - 12) / 12) * 12;
             return c + keys::whiteOffsets[slot];
+        }
+
+        // The chord-zone black key of shifter `slot` in the same octave, or -1.
+        int shifterKeyForSlot (int slot) const noexcept
+        {
+            if (split < 12 || slot < 0 || slot > 4)
+                return -1;
+            const int c = ((split - 12) / 12) * 12;
+            return c + keys::blackOffsets[slot];
         }
     };
 }

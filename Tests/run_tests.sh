@@ -34,6 +34,7 @@ compile_and_run () {
 }
 
 compile_and_run test_theory
+compile_and_run test_chords
 compile_and_run test_engine
 
 echo ""

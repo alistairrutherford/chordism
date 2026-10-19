@@ -210,6 +210,12 @@ pitch(k, o)   = keyRoot + scale[scaleIndex(k) mod 7] + 12·⌊scaleIndex(k)/7⌋
 - **Active Chord dropdown / right-click chord name:** a list of chord types for that root. Choosing one rewrites the steps (on and accidental) for that slot.
 - **Voice leading (P2):** when Smooth is on, each new chord picks the inversion and octave whose notes are closest to the previous chord (minimum total semitone distance), anchored to the Output Octave.
 - **Shifters:** five slots, each holding a target value (a Chord Group, or a Key/Scale). Standard = active while held. Toggle = stays active until another shifter is pressed. Shifting while a chord is held retriggers it.
+- **Decisions made in Phase 2 (2026-10-19):**
+  - Editor edits belong to a **scale degree**, not a white key: a progression only reorders the chords, so the V chord keeps its edits wherever it lands (two keys on the same degree share them). Edits are relative to the scale's degrees, so they follow Key and Scale; accidentals are stored as shown, including the scale default at the time of the edit.
+  - Edits are tied to the Chord Group they were made on. The engine stops applying them on the block the group changes and doesn't bring them back if the group returns; a newer snapshot (a new edit, or a state restore arriving with its group) applies again. The plug-in then clears its stored edits.
+  - Progressions: 8 presets (each a permutation of the 7 degrees, named by degree numbers) plus **Custom**, whose 7 degrees are host parameters (*Custom 1–7*) and may repeat.
+  - Shifters: per slot a type (Chord Group or Key/Scale) plus group, key and scale; key and scale can be *Same*. Standard: with several held, the last pressed wins and releasing it hands back to the one before. Toggle: pressing the active shifter again turns it off; a toggled shifter survives transport stop; changing the mode turns it off. A group shifter plays that group's own shapes (edits are ignored); a Key/Scale shifter keeps the edits. Retriggering only restrikes held keys whose chord changed, at the sample of the change.
+  - Names are spelled in the key (the tonic spelling with the fewest accidentals; ties go to sharps with a major 3rd, flats with a minor 3rd); a slot's tones take their step's letter. Roman numerals come from the slot's own degree, 3rd and 5th, so inversions keep theirs; a root moved by its accidental gets `b`/`#` (`bII`); chords with no 3rd are upper case.
 
 ### 4.3 Smart Scale mappings
 
@@ -311,7 +317,7 @@ out at `~/Development/JUCE`. No CMake or Homebrew.
 
 ### Real-time safety rules
 - `processBlock` never allocates, locks, logs or does file I/O. All buffers are allocated in `prepareToPlay`.
-- Changes from the UI and from `SharedSession` reach the audio thread as lock-free snapshots (double-buffered and swapped atomically).
+- Changes from the UI and from `SharedSession` reach the audio thread as lock-free snapshots (double-buffered and swapped atomically; `Source/core/engine/SnapshotExchange.h` uses the three-buffer form, so the writer never touches the buffer the reader holds and neither side waits).
 - Export, preset loading and MIDI import happen on the message thread. The results are handed over as new snapshots.
 - All-notes-off (through `VoiceTracker`) on: transport stop, Enable off, preset load, Key/Scale change with notes held (retrigger), `releaseResources`, and destruction.
 
@@ -418,7 +424,17 @@ chordism/
 | 0. Feasibility | **Done (2026-10-16).** Routing, hosting, drag-out and Instance Sync all confirmed in Live 12.4.6. | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Results by round are in `Spikes/Phase0/README.md`. Routing decision is in §3. |
 | Phase 0 carry-over: recording timing | **Done (2026-10-19).** VST3 is sample-accurate; the port is one block + ~1.6 ms late. | Measured with `LiveBridge/` (§3, §8). |
 | 1. Skeleton + theory core | **Done (2026-10-19).** Live plays C-major chords from the chord zone through VST3 MIDI From (sample-accurate) and the virtual port (one buffer late, §3), checked by LiveBridge. | Details below. |
-| 2. Chord Generator complete | Next | Chord Editor model in the UI state, Progressions, Shifters, chord naming. |
+| 2. Chord Generator complete | **Done (2026-10-19).** R3 reference set, naming and stuck-note fuzz pass; progressions and shifters checked in Live (LiveBridge). | Details below. |
+| 3. Timing engine + chord FX | Next | `Clock`, `EventQueue`, Strum, Arp, Repeat, Hold, Octave, Stack, Velocity Algorithm, Step Sequencer. |
+
+**Phase 2 (2026-10-19):**
+- **Core (plain C++):** `Source/core/theory`: `ChordEditor.h` (edits per degree on top of a group's shapes, and the editor operations: on/off, accidental, stacked octaves, reset), `Progressions.h`, `ChordNamer.h` (pitch-class set + bass → root, quality, extensions, alterations, slash bass; spelling in the key), `RomanNumeral.h`. `Source/core/engine`: `Shifters.h`, `SnapshotExchange.h`, and `ChordismEngine` now builds its chords from Progression + Chord Group + edits + the active shifter, and retriggers held chords whose chord changed (parameter, edit, progression or shifter). Design decisions are in §4.2.
+- **Plug-in:** `Source/plugin/ChordEditorState` holds the edits as a ValueTree (`<ChordEditor group><Degree index><Step index on acc oct/>…`), saved inside the plug-in state next to the parameters, and publishes each change to the audio thread through a `SnapshotExchange` (no locks or allocation in `processBlock`). A 20 Hz timer clears the stored edits when the Chord Group changes. There is no editor UI for the matrix yet (Phase 5); the interim editor shows the seven chords with Roman numeral and name, the last one played and the active shifter.
+- **Host parameters (appended, IDs version 1):** Progression, Custom 1–7, Shifter mode, Shifter 1–5 type / group / key / scale (key and scale lists start with *Same*), and Test shifter (Off, 1–5: the test pattern holds that shifter through every odd bar). 41 parameters in all.
+- **Tests:** `Tests/test_chords.cpp`: the R3 reference set, 62 chords (triads, sus, power, 6ths, sevenths incl. dim7, m(maj7), 7#5, 7b5, 9ths, add9, 9sus4, 11ths, #11, 13ths, altered dominants b9 #9 b13 #5, Neapolitan bII, inversions, drop-2, drop-3, drop-2&4, open and stacked voicings, and other keys and scales), each built with the editor operations, played through the engine, and checked for exact MIDI notes, name (from the slot and from the bare pitch set) and, for 29, Roman numeral; naming and spelling tests; Roman numerals for whole scales. `Tests/test_engine.cpp`: edits (apply, follow while held, group reset, restore), progressions, shifters (both modes, hand-over, targets, edits), the test shifter in 3/4 and 4/4, a two-thread snapshot test (200,000 publishes, nothing torn), and the stuck-note fuzz now also edits chords, changes progressions, custom degrees, shifter mode and targets and presses shifters while notes are held: 8 seeds × 5000 blocks, nothing stuck.
+- **Host validation:** both projects build (Release); `Tests/run_validation.sh` passes: `auval` aumu + aumi, and `pluginval` 1.0.4 at strictness 10 on the VST3, the AU instrument and the AU MIDI effect.
+- **Live (`LiveBridge/tests/test_phase2_live.py`, 44.1 kHz, buffer 1024, VST3 MIDI From):** all 3 cases pass. The Pop progression plays its degrees on all 16 beats. Test shifter 1 (Sevenths) and 4 (parallel minor, Standard mode) give the shifted chords on the odd bars and the triads on the even bars, matching the music21 reference. Every note lands at 0.000 ms.
+- **Not done yet:** the Active Chord / chord-type menus (they need the UI, Phase 5); voice leading (P2, Phase 7).
 
 **Phase 1 (2026-10-19):**
 - **Projects:** `Chordism.jucer` (VST3, AU `aumu`, Standalone) and `MidiFX/ChordismMidiFX.jucer`

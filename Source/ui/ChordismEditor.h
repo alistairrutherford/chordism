@@ -1,4 +1,5 @@
-// Phase 1 editor: the generic parameter list plus a status line (port, last chord).
+// Interim editor: the generic parameter list plus status lines (port; the seven chords with
+// their Roman numerals and names, the last one played in brackets; the active shifter).
 // The real UI is Phase 5 (PLAN.md §6).
 #pragma once
 

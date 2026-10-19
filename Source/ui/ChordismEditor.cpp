@@ -1,5 +1,7 @@
 #include "ChordismEditor.h"
 #include "../plugin/ChordismProcessor.h"
+#include "../core/theory/ChordNamer.h"
+#include "../core/theory/RomanNumeral.h"
 
 namespace chordism
 {
@@ -12,7 +14,7 @@ namespace chordism
         addAndMakeVisible (status);
 
         setResizable (true, false);
-        setSize (520, 460);
+        setSize (640, 520);
         timerCallback();
         startTimerHz (10);
     }
@@ -30,16 +32,25 @@ namespace chordism
     void ChordismEditor::resized()
     {
         auto r = getLocalBounds();
-        status.setBounds (r.removeFromBottom (44).reduced (8, 4));
+        status.setBounds (r.removeFromBottom (76).reduced (8, 4));
         generic.setBounds (r);
     }
 
     void ChordismEditor::timerCallback()
     {
-        static const char* numerals[7] = { "I", "II", "III", "IV", "V", "VI", "VII" };
-        const int slot = processor.lastChordSlot.load();
-        status.setText ("Port: " + processor.getPortStatus() + "\nLast chord key: "
-                            + (slot >= 0 && slot < 7 ? juce::String (numerals[slot]) : juce::String ("-"))
+        const auto& d = processor.readDisplay();
+
+        // The seven white keys: Roman numeral and chord name, the last one played marked.
+        juce::String chords;
+        for (int n = 0; n < numChordSlots; ++n)
+        {
+            const auto& slot = d.chords[(size_t) n];
+            chords << (n ? "   " : "") << (n == d.lastSlot ? "[" : "") << juce::String (romanNumeral (slot, d.context.scale)) << " "
+                   << juce::String (nameSlot (slot, d.context).text()) << (n == d.lastSlot ? "]" : "");
+        }
+
+        status.setText ("Port: " + processor.getPortStatus() + "\nChords: " + chords
+                            + "\nShifter: " + (d.activeShifter >= 0 ? juce::String (d.activeShifter + 1) : juce::String ("-"))
                             + "   Sounding: " + juce::String (processor.soundingNotes.load())
                             + (processor.transportPlaying.load() ? "   (playing)" : ""),
                         juce::dontSendNotification);
