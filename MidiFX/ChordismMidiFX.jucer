@@ -30,6 +30,17 @@
         <FILE id="cfF010" name="ChordismEngine.h" compile="0" resource="0" file="../Source/core/engine/ChordismEngine.h"/>
         <FILE id="cfF023" name="Shifters.h" compile="0" resource="0" file="../Source/core/engine/Shifters.h"/>
         <FILE id="cfF024" name="SnapshotExchange.h" compile="0" resource="0" file="../Source/core/engine/SnapshotExchange.h"/>
+        <FILE id="cfF027" name="Clock.h" compile="0" resource="0" file="../Source/core/engine/Clock.h"/>
+        <FILE id="cfF028" name="EventQueue.h" compile="0" resource="0" file="../Source/core/engine/EventQueue.h"/>
+        <FILE id="cfF029" name="NoteValues.h" compile="0" resource="0" file="../Source/core/engine/NoteValues.h"/>
+        <FILE id="cfF030" name="Stack.h" compile="0" resource="0" file="../Source/core/engine/Stack.h"/>
+        <FILE id="cfF031" name="Strum.h" compile="0" resource="0" file="../Source/core/engine/Strum.h"/>
+        <FILE id="cfF032" name="Arp.h" compile="0" resource="0" file="../Source/core/engine/Arp.h"/>
+        <FILE id="cfF033" name="Repeat.h" compile="0" resource="0" file="../Source/core/engine/Repeat.h"/>
+        <FILE id="cfF034" name="StepSequencer.h" compile="0" resource="0" file="../Source/core/engine/StepSequencer.h"/>
+        <FILE id="cfF035" name="VelocityAlgorithm.h" compile="0" resource="0" file="../Source/core/engine/VelocityAlgorithm.h"/>
+        <FILE id="cfF036" name="Hold.h" compile="0" resource="0" file="../Source/core/engine/Hold.h"/>
+        <FILE id="cfF037" name="ChordFx.h" compile="0" resource="0" file="../Source/core/engine/ChordFx.h"/>
       </GROUP>
       <GROUP id="cfGrp2" name="plugin">
         <FILE id="cfF011" name="ChordismProcessor.h" compile="0" resource="0" file="../Source/plugin/ChordismProcessor.h"/>

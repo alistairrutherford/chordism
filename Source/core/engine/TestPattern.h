@@ -40,9 +40,11 @@ namespace chordism
         }
 
         // Adds this block's key presses to `out` (in sample order). `on` is the parameter;
-        // `shifter` is the test shifter slot, or -1.
+        // `shifter` is the test shifter slot, or -1. For one segment of a block (Clock.h), `t`
+        // holds the segment's start and `offset` its first sample: events are stamped from it.
         template <class Out>
-        void generate (bool on, int shifter, const Transport& t, int numSamples, const InputRouter& router, Out& out) noexcept
+        void generate (bool on, int shifter, const Transport& t, int numSamples, const InputRouter& router, Out& out,
+                       int offset = 0) noexcept
         {
             const double spb = t.samplesPerBeat();
             const double endPpq = t.ppq + numSamples / spb;
@@ -50,9 +52,9 @@ namespace chordism
             const int shifterKey = on ? router.shifterKeyForSlot (shifter) : -1;
 
             if (heldKey >= 0 && (! on || ! t.playing || jumpedBack))
-                releaseHeld (0, out);
+                releaseHeld (offset, out);
             if (heldShifter >= 0 && (! on || ! t.playing || jumpedBack || heldShifter != shifterKey))
-                releaseShifter (0, out);
+                releaseShifter (offset, out);
 
             if (! on || ! t.playing)
             {
@@ -72,7 +74,7 @@ namespace chordism
                 lastHalfBeat = h;
 
                 int sample = (int) std::llround (((double) h * 0.5 - t.ppq) * spb);
-                sample = sample < 0 ? 0 : (sample >= numSamples ? numSamples - 1 : sample);
+                sample = offset + (sample < 0 ? 0 : (sample >= numSamples ? numSamples - 1 : sample));
 
                 if (heldKey >= 0)
                     releaseHeld (sample, out);

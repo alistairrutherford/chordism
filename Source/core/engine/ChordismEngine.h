@@ -1,20 +1,29 @@
 // The MIDI engine: input router, the Chord Generator (Chord Groups, Chord Editor edits,
-// Progressions, Shifters), the test pattern, and note bookkeeping through VoiceTracker.
+// Progressions, Shifters), the chord-zone effects (ChordFx.h: Stack, Strum, Arp, Repeat, Step
+// Sequencer, Velocity Algorithm, Hold) on the Clock, the test pattern, and note bookkeeping
+// through VoiceTracker.
 // Plain C++, no JUCE, no allocation; the plug-in is a thin adapter around it, so every
 // behaviour here is unit-testable.
 //
 //   chord zone, white key  → the slot's chord: degree from the Progression, steps from the
-//                            Chord Group or the degree's editor edits, Key, Scale, Chord Octave
+//                            Chord Group or the degree's editor edits, Key, Scale, Chord Octave,
+//                            then the effect chain (one performance per key, ChordFx.h)
 //   chord zone, black key  → shifter (Shifters.h): swaps in its Chord Group or Key/Scale
 //   Smart Scale zone       → passed through on the output channel (mappings are Phase 4)
 //   Enable off             → input passes through unchanged
 //
 // Whenever the chords change while chord keys are held (a parameter, an edit, a shifter), each
 // held key whose chord changed is released and replayed: shifting while a chord is held
-// retriggers it (PLAN.md §4.2).
+// retriggers it (PLAN.md §4.2). An arp takes the new chord at its next step.
+//
+// A block is processed in the Clock's segments (split at loop wraps). Within a segment, input
+// and queued events run in sample order; at one sample, queued note-offs come first, then
+// input, then queued note-ons.
 #pragma once
 
 #include "../theory/ChordEditor.h"
+#include "ChordFx.h"
+#include "Clock.h"
 #include "InputRouter.h"
 #include "MidiEvents.h"
 #include "Shifters.h"
@@ -43,6 +52,7 @@ namespace chordism
         bool testPattern = false;
         int testShifter = -1;             // -1 = off, else the shifter slot the test pattern holds
         int outputChannel = 0;            // 0..15
+        ChordFxSettings fx;               // Phase 3: the chord-zone effects
     };
 
     class ChordismEngine
@@ -55,24 +65,66 @@ namespace chordism
         void process (const EngineSettings& s, const ChordEdits& edits, const Transport& t, const MidiEvent* in,
                       int numIn, int numSamples, BlockEvents& out) noexcept
         {
+            numSamples = numSamples > 0 ? numSamples : 0;
+            clock.beginBlock (t, numSamples);
+            performer.setSegment (0);
+
             if (resetRequested.exchange (false))
                 releaseAll (0, out);
 
-            applySettings (s, edits, out);
-
             if (wasPlaying && ! t.playing)
                 releaseAll (0, out);   // transport stop: all notes off (PLAN.md §5)
+            if (! wasPlaying && t.playing)
+                performer.transportStarted();
             wasPlaying = t.playing;
 
-            injected.clear();
-            pattern.generate (s.enabled && s.testPattern, s.testShifter, t, numSamples, router, injected);
+            if (clock.jumpedAtStart())
+                performer.transportJump (clock.jumpDelta(), 0, out);
 
-            int i = 0, j = 0;
-            while (i < numIn || j < injected.size())
+            applySettings (s, edits, out);
+
+            int i = 0;
+            for (int seg = 0; seg < clock.numSegments(); ++seg)
             {
-                const bool fromInput = j >= injected.size() || (i < numIn && in[i].sample <= injected[j].sample);
-                const MidiEvent& e = fromInput ? in[i++] : injected[j++];
-                handle (e, numSamples, out);
+                const ClockSegment g = clock.segment (seg);
+                const bool last = seg == clock.numSegments() - 1;
+                performer.setSegment (seg);
+                if (seg > 0)
+                    performer.transportJump (clock.wrapDelta (seg), g.start, out);   // a loop wrap inside the block
+
+                Transport segmentTransport = t;
+                segmentTransport.ppq = g.ppq;
+                injected.clear();
+                pattern.generate (s.enabled && s.testPattern, s.testShifter, segmentTransport, g.end - g.start, router,
+                                  injected, g.start);
+
+                int j = 0, cursor = g.start, runs = 0;
+                while (true)
+                {
+                    // The next key event of this segment: input before the test pattern's at one sample.
+                    const bool haveIn = i < numIn && (last || clampSample (in[i].sample, numSamples) < g.end);
+                    const bool haveInjected = j < injected.size();
+                    const bool fromInput = haveIn && (! haveInjected || clampSample (in[i].sample, numSamples) <= injected[j].sample);
+                    const MidiEvent* next = fromInput ? &in[i] : (haveInjected ? &injected[j] : nullptr);
+                    const int nextSample = next != nullptr ? clampSample (next->sample, numSamples) : g.end;
+
+                    int at = 0;
+                    uint8_t order = 0;
+                    if (runs < maxQueueRunsPerSegment
+                        && performer.peek (cursor, next != nullptr ? nextSample + 1 : g.end, at, order)
+                        && (next == nullptr || at < nextSample || order < ChordPerformer::inputOrder))
+                    {
+                        ++runs;
+                        cursor = at;
+                        performer.runNext (out);
+                        continue;
+                    }
+                    if (next == nullptr)
+                        break;
+                    (fromInput ? i : j)++;
+                    cursor = nextSample > cursor ? nextSample : cursor;
+                    handle (*next, numSamples, out);
+                }
             }
         }
 
@@ -86,6 +138,7 @@ namespace chordism
         // All notes off now (bypass, transport stop, all-notes-off, destruction).
         void releaseAll (int sample, BlockEvents& out) noexcept
         {
+            performer.killAll (sample, out);
             voices.releaseAll (sample, out);
             held = {};
             shifters.forgetHeld();            // a Standard shifter ends; a Toggle one stays on
@@ -101,6 +154,8 @@ namespace chordism
         const ChordContext& getChordContext() const noexcept { return context; }
         int getLastChordSlot() const noexcept { return lastChordSlot; }
         int getPatternKey() const noexcept { return pattern.getHeldKey(); }
+        const ChordPerformer& getPerformer() const noexcept { return performer; }
+        const Clock& getClock() const noexcept { return clock; }
         int getActiveShifter() const noexcept { return activeShifter; }
         bool editsApply() const noexcept { return editsLive; }
 
@@ -152,9 +207,9 @@ namespace chordism
                               useEdits ? &adopted : nullptr);
         }
 
-        // Recomputes the chords. With `out`, every held chord key whose chord changed is
-        // released and replayed at `sample` (all releases first, so a shared pitch restrikes).
-        void refreshChords (int sample, BlockEvents* out) noexcept
+        // Recomputes the chords, marking in `changed` the slots whose chord changed. With `out`,
+        // every performance whose chord changed is replayed at `sample` (ChordPerformer::retune).
+        void refreshChords (int sample, BlockEvents* out, std::array<bool, numChordSlots>* changedOut = nullptr) noexcept
         {
             activeShifter = shifters.active (current.shifterMode);
             ChordSet next;
@@ -171,16 +226,11 @@ namespace chordism
             }
             chords = next;
             context = ctx;
+            if (changedOut != nullptr)
+                *changedOut = changed;
 
-            if (out == nullptr || ! any)
-                return;
-
-            for (int n = 0; n < 128; ++n)
-                if (isHeldChord (held[(size_t) n]) && changed[(size_t) held[(size_t) n].routed.index])
-                    voices.release ((VoiceTracker::Source) n, sample, *out);
-            for (int n = 0; n < 128; ++n)
-                if (isHeldChord (held[(size_t) n]) && changed[(size_t) held[(size_t) n].routed.index])
-                    startKey (n, held[(size_t) n], sample, *out);
+            if (out != nullptr && any)
+                performer.retune (changed, sample, *out);
         }
 
         // Takes a new editor snapshot. Edits apply while their group is the Chord Group; once
@@ -218,10 +268,14 @@ namespace chordism
             {
                 releaseAll (0, out);
                 refreshChords (0, nullptr);
+                performer.applySettings (s.fx, s.outputChannel, {}, 0, out);
                 return;
             }
 
-            refreshChords (0, &out);   // held chords follow parameter and edit changes
+            // Held chords follow parameter and edit changes, and the effects follow theirs.
+            std::array<bool, numChordSlots> changed {};
+            refreshChords (0, nullptr, &changed);
+            performer.applySettings (s.fx, s.outputChannel, changed, 0, out);
 
             if (s.muteChords && ! old.muteChords)
                 releaseZone (Zone::Chord, out);
@@ -231,6 +285,8 @@ namespace chordism
 
         void releaseZone (Zone z, BlockEvents& out) noexcept
         {
+            if (z == Zone::Chord)
+                performer.killAll (0, out);
             for (int n = 0; n < 128; ++n)
                 if (held[(size_t) n].down && ! held[(size_t) n].passThrough && held[(size_t) n].routed.zone == z)
                     voices.release ((VoiceTracker::Source) n, 0, out);
@@ -254,9 +310,7 @@ namespace chordism
                     if (current.muteChords)
                         return;
                     lastChordSlot = h.routed.index;
-                    const auto notes = chordNotes (chords[(size_t) h.routed.index], context);
-                    for (auto note : notes)
-                        voices.start (src, ch, note, h.velocity, sample, out);
+                    performer.press (n, h.routed.index, h.velocity, sample, out);
                     return;
                 }
                 case KeyRole::ScaleTone:
@@ -270,16 +324,24 @@ namespace chordism
             }
         }
 
+        static int clampSample (int sample, int numSamples) noexcept
+        {
+            return sample < 0 ? 0 : (sample >= numSamples ? (numSamples > 0 ? numSamples - 1 : 0) : sample);
+        }
+
         void handle (const MidiEvent& e, int numSamples, BlockEvents& out) noexcept
         {
-            int sample = e.sample < 0 ? 0 : (e.sample >= numSamples ? (numSamples > 0 ? numSamples - 1 : 0) : e.sample);
+            const int sample = clampSample (e.sample, numSamples);
 
             if (e.isNoteOn())
             {
                 const int n = e.note();
                 auto& h = held[(size_t) n];
                 if (h.down)
-                    keyUp (n, sample, out);   // retrigger
+                {
+                    performer.end (n, sample, out);   // retrigger: a held chord key ends, even with Hold
+                    keyUp (n, sample, out);
+                }
 
                 h.down = true;
                 h.velocity = (uint8_t) e.velocity();
@@ -316,14 +378,20 @@ namespace chordism
         {
             auto& h = held[(size_t) n];
             h.down = false;
-            voices.release ((VoiceTracker::Source) n, sample, out);
+            if (! h.passThrough && h.routed.role == KeyRole::ChordSlot)
+                performer.release (n, sample, out);   // ends, or is held (Hold)
+            else
+                voices.release ((VoiceTracker::Source) n, sample, out);
             if (! h.passThrough && h.routed.role == KeyRole::Shifter && shifters.release (n, current.shifterMode))
                 refreshChords (sample, &out);
         }
 
+        static constexpr int maxQueueRunsPerSegment = 1 << 16;
+
         EngineSettings current;
         InputRouter router;
         VoiceTracker voices;
+        Clock clock;
         TestPattern pattern;
         Shifters shifters;
         ChordEdits adopted;               // the last editor snapshot taken
@@ -338,5 +406,6 @@ namespace chordism
         std::atomic<bool> resetRequested { false };
         std::atomic<uint32_t> editsDiscarded { 0 };
         std::atomic<uint32_t> discardedVersion { 0 };
+        ChordPerformer performer { voices, clock, chords, context };
     };
 }

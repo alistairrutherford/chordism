@@ -2,6 +2,7 @@
 // Progressions, Shifters, the test pattern under a fake transport, port timestamps, the
 // snapshot exchange, and stuck-note fuzzing (PLAN.md §8).
 #include "TestUtil.h"
+#include "Receiver.h"
 #include "core/engine/ChordismEngine.h"
 #include "core/engine/PortTiming.h"
 #include "core/engine/SnapshotExchange.h"
@@ -16,56 +17,10 @@
 
 using namespace chordism;
 using testutil::check;
+using testutil::Receiver;
 
 namespace
 {
-    // What an instrument receiving the output would hear: which notes are on, and whether the
-    // stream ever doubled a note-on, sent a stray note-off, or went backwards in time.
-    struct Receiver
-    {
-        std::set<std::pair<int, int>> on;     // (channel, note)
-        int noteOns = 0, noteOffs = 0;
-        int doubleOns = 0, strayOffs = 0, outOfOrder = 0, outOfBlock = 0;
-
-        void feed (const BlockEvents& out, int numSamples)
-        {
-            int last = -1;
-            for (const auto& e : out)
-            {
-                if (e.sample < last) ++outOfOrder;
-                if (e.sample < 0 || e.sample >= std::max (1, numSamples)) ++outOfBlock;
-                last = e.sample;
-
-                const auto k = std::make_pair (e.channel(), e.note());
-                if (e.isNoteOn())
-                {
-                    ++noteOns;
-                    if (! on.insert (k).second) ++doubleOns;
-                }
-                else if (e.isNoteOff())
-                {
-                    ++noteOffs;
-                    if (on.erase (k) == 0) ++strayOffs;
-                }
-                else if (e.isAllNotesOff())
-                {
-                    on.clear();
-                }
-            }
-        }
-
-        bool clean() const { return doubleOns == 0 && strayOffs == 0 && outOfOrder == 0 && outOfBlock == 0; }
-
-        std::string describe() const
-        {
-            std::ostringstream o;
-            o << on.size() << " sounding, " << noteOns << " on / " << noteOffs << " off, " << doubleOns
-              << " double on, " << strayOffs << " stray off, " << outOfOrder << " out of order, " << outOfBlock
-              << " outside the block";
-            return o.str();
-        }
-    };
-
     std::vector<int> notesOn (const BlockEvents& out)
     {
         std::vector<int> v;
@@ -104,7 +59,13 @@ namespace
             engine.process (settings, edits, transport, in.data(), (int) in.size(), numSamples, out);
             rx.feed (out, numSamples);
             if (transport.playing)
-                transport.ppq += numSamples / transport.samplesPerBeat();
+            {
+                // A host that loops without splitting its blocks.
+                const double next = transport.ppq + numSamples / transport.samplesPerBeat();
+                const bool wraps = transport.looping && transport.loopEnd > transport.loopStart
+                                && transport.ppq < transport.loopEnd && next >= transport.loopEnd;
+                transport.ppq = wraps ? next - (transport.loopEnd - transport.loopStart) : next;
+            }
             return out;
         }
     };
@@ -724,7 +685,11 @@ static void testSnapshotExchange()
 // Stuck-note fuzzing: random keys, settings, transport moves and block sizes over thousands
 // of blocks. The output must never double a note-on or send a stray note-off, and once every
 // key is up and the transport stops, nothing may sound and VoiceTracker must be empty.
-static void testFuzz (uint32_t seed, int blocks)
+// Phase 3: also every chord effect (Stack, Strum, Arp, Repeat, Step Sequencer, Velocity, Hold),
+// loops that wrap inside blocks, and time-signature changes; the scheduler's queue must stay
+// within its bound (4 events per performance).
+// `fx`: a run that keeps a timed effect on and the transport looping most of the time.
+static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
 {
     std::mt19937 rng (seed);
     auto chance = [&] (double p) { return std::uniform_real_distribution<double> (0.0, 1.0) (rng) < p; };
@@ -734,6 +699,7 @@ static void testFuzz (uint32_t seed, int blocks)
     rig.transport = { 44100.0, false, 0.0, 120.0, 4, 4 };
     std::set<std::pair<int, int>> keysDown;   // (channel, note) the "player" holds
     int maxSounding = 0;
+    int fxBlocks = 0, wrapBlocks = 0;         // blocks with a timed effect playing, with a loop wrap inside
 
     for (int b = 0; b < blocks; ++b)
     {
@@ -821,7 +787,58 @@ static void testFuzz (uint32_t seed, int blocks)
         }
         if (chance (0.02)) rig.settings.testShifter = pick (-1, numShifters - 1);
 
+        // Phase 3: chord effects, holds, loops and time signatures while notes are held.
+        auto& fx = rig.settings.fx;
+        auto unit = [&] { return std::uniform_real_distribution<double> (0.0, 1.0) (rng); };
+        if (chance (0.03)) fx.stack = (StackMode) pick (0, numStackModes - 1);
+        if (chance (0.03)) { fx.strum = (StrumMode) pick (0, numStrumModes - 1); fx.strumRate = pick (0, numStrumRates - 1); fx.strumMs = pick (0, 120); }
+        if (chance (0.03)) { fx.arp = chance (0.4) ? ArpPattern::Off : (ArpPattern) pick (1, numArpPatterns - 1); fx.arpRange = pick (1, 3); }
+        if (chance (0.03)) { fx.arpRate = pick (0, numPatternRates - 1); fx.arpGate = unit(); }
+        if (chance (0.03)) fx.repeat = { chance (0.5), pick (0, numPatternRates - 1), unit() };
+        if (chance (0.02)) fx.seq.on = ! fx.seq.on;
+        if (chance (0.03))
+        {
+            fx.seq.pattern = pick (0, numSeqPatterns - 1);
+            fx.seq.patterns[(size_t) pick (0, numSeqPatterns - 1)] = (uint16_t) pick (0, 0xffff);
+            fx.seq.swing = unit();
+            fx.seq.gate = unit();
+            fx.seq.sustain = chance (0.5);
+        }
+        if (chance (0.02)) fx.velocity = { (VelocityCurve) pick (0, numVelocityCurves - 1), pick (1, 127), unit() };
+        if (chance (0.02)) fx.hold = (HoldMode) pick (0, numHoldModes - 1);
+        if (chance (fxRun ? 0.03 : 0.01))
+        {
+            rig.transport.looping = chance (fxRun ? 0.9 : 0.6);
+            rig.transport.loopStart = std::floor (unit() * 8.0);
+            rig.transport.loopEnd = rig.transport.loopStart + (chance (0.2) ? 0.02 + unit() * 0.2 : 0.5 + std::floor (unit() * 8.0));
+            rig.transport.ppq = rig.transport.loopStart + unit() * (rig.transport.loopEnd - rig.transport.loopStart);
+        }
+        if (fxRun)
+        {
+            if (fx.arp == ArpPattern::Off && fx.strum == StrumMode::Off && ! fx.repeat.on && ! fx.seq.on)
+                fx.repeat.on = true;
+            if (! rig.transport.playing && chance (0.1))
+                rig.transport.playing = true;
+            if (fx.hold == HoldMode::Off && chance (0.1))
+                fx.hold = chance (0.5) ? HoldMode::Latch : HoldMode::Bar;   // keeps chords playing
+        }
+        if (chance (0.005))
+        {
+            const int sig = pick (0, 3);
+            rig.transport.numerator = sig == 0 ? 4 : sig == 1 ? 3 : sig == 2 ? 7 : 5;
+            rig.transport.denominator = sig == 2 ? 8 : 4;
+        }
+
         rig.run (in, numSamples);
+        const auto& perf = rig.engine.getPerformer();
+        fxBlocks += perf.aliveCount() > 0 && (fx.arp != ArpPattern::Off || fx.strum != StrumMode::Off || fx.repeat.on || fx.seq.on) ? 1 : 0;
+        wrapBlocks += rig.engine.getClock().numSegments() > 1 ? 1 : 0;
+        if (perf.queued() > 4 * perf.aliveCount())
+        {
+            check (false, "fuzz seed " + std::to_string (seed) + ", block " + std::to_string (b) + ": " + std::to_string (perf.queued())
+                              + " events queued for " + std::to_string (perf.aliveCount()) + " performances");
+            return;
+        }
         maxSounding = std::max (maxSounding, (int) rig.rx.on.size());
 
         if ((int) rig.rx.on.size() != rig.engine.getVoices().soundingNotes() || ! rig.rx.clean())
@@ -838,13 +855,16 @@ static void testFuzz (uint32_t seed, int blocks)
     for (auto [ch, note] : keysDown)
         ups.push_back (MidiEvent::noteOff (ch, note, 0));
     rig.run (ups, 64);
+    rig.settings.fx.hold = HoldMode::Off;   // a hold made while stopped survives a stopped transport
+    rig.run ({}, 64);
     rig.transport.playing = false;
     rig.run ({}, 64);
     rig.settings.testPattern = false;
     rig.run ({}, 64);
 
     check (rig.rx.clean() && rig.rx.on.empty() && rig.engine.getVoices().isEmpty() && rig.rx.noteOns == rig.rx.noteOffs,
-           "fuzz seed " + std::to_string (seed) + ", " + std::to_string (blocks) + " blocks (peak " + std::to_string (maxSounding)
+           "fuzz seed " + std::to_string (seed) + ", " + std::to_string (blocks) + " blocks (" + std::to_string (fxBlocks)
+               + " with timed effects, " + std::to_string (wrapBlocks) + " loop wraps; peak " + std::to_string (maxSounding)
                + " notes): " + rig.rx.describe());
 }
 
@@ -877,6 +897,8 @@ int main()
     std::cout << "== stuck-note fuzz ==\n";
     for (uint32_t seed = 1; seed <= 8; ++seed)
         testFuzz (seed, 5000);
+    for (uint32_t seed = 101; seed <= 108; ++seed)
+        testFuzz (seed, 5000, true);
 
     return testutil::finish ("test_engine");
 }

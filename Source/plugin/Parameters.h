@@ -34,6 +34,29 @@ namespace chordism::params
     juce::String shifterKey (int slot);       // "shifter1Key"… (0 = Same, then the keys)
     juce::String shifterScale (int slot);     // "shifter1Scale"… (0 = Same, then the scales)
 
+    // Phase 3 (appended): the chord-zone effects.
+    inline constexpr const char* stack        = "stack";
+    inline constexpr const char* strum        = "strum";
+    inline constexpr const char* strumRate    = "strumRate";
+    inline constexpr const char* strumMs      = "strumMs";
+    inline constexpr const char* arp          = "arp";
+    inline constexpr const char* arpRate      = "arpRate";
+    inline constexpr const char* arpRange     = "arpRange";
+    inline constexpr const char* arpGate      = "arpGate";
+    inline constexpr const char* repeat       = "repeat";
+    inline constexpr const char* repeatRate   = "repeatRate";
+    inline constexpr const char* repeatGate   = "repeatGate";
+    inline constexpr const char* seq          = "seq";
+    inline constexpr const char* seqPattern   = "seqPattern";
+    inline constexpr const char* seqSwing     = "seqSwing";
+    inline constexpr const char* seqGate      = "seqGate";
+    inline constexpr const char* seqSustain   = "seqSustain";
+    inline constexpr const char* velocity     = "velocity";
+    inline constexpr const char* velocityPeak = "velocityPeak";
+    inline constexpr const char* velocityRange = "velocityRange";
+    inline constexpr const char* hold         = "hold";
+    juce::String seqStep (int pattern, int step);   // "seq1Step1".."seq4Step16"
+
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
     // Lock-free reads of the current values, for the audio thread.
@@ -45,6 +68,7 @@ namespace chordism::params
         EngineSettings engineSettings() const noexcept;
         ChordGroup chordGroup() const noexcept;
         Scale currentScale() const noexcept;
+        ChordFxSettings chordFx() const noexcept;
         bool portEnabled() const noexcept { return port->load() > 0.5f; }
         bool portCompensation() const noexcept { return portCompensate->load() > 0.5f; }
         double portTrim() const noexcept { return (double) portTrimMs->load(); }
@@ -67,6 +91,28 @@ namespace chordism::params
         std::atomic<float>* testShifter;
         std::array<std::atomic<float>*, numChordSlots> customDegree {};
         std::array<std::atomic<float>*, numShifters> shifterKind {}, shifterGroup {}, shifterKey {}, shifterScale {};
+
+        std::atomic<float>* fxStack;
+        std::atomic<float>* fxStrum;
+        std::atomic<float>* fxStrumRate;
+        std::atomic<float>* fxStrumMs;
+        std::atomic<float>* fxArp;
+        std::atomic<float>* fxArpRate;
+        std::atomic<float>* fxArpRange;
+        std::atomic<float>* fxArpGate;
+        std::atomic<float>* fxRepeat;
+        std::atomic<float>* fxRepeatRate;
+        std::atomic<float>* fxRepeatGate;
+        std::atomic<float>* fxSeq;
+        std::atomic<float>* fxSeqPattern;
+        std::atomic<float>* fxSeqSwing;
+        std::atomic<float>* fxSeqGate;
+        std::atomic<float>* fxSeqSustain;
+        std::atomic<float>* fxVelocity;
+        std::atomic<float>* fxVelocityPeak;
+        std::atomic<float>* fxVelocityRange;
+        std::atomic<float>* fxHold;
+        std::array<std::array<std::atomic<float>*, numSeqSteps>, numSeqPatterns> fxSeqSteps {};
     };
 
     // MIDI note name as Live writes it (60 = C3).

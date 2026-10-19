@@ -36,6 +36,20 @@ Then restart Live and, in **Settings → Link, Tempo & MIDI → Control Surface*
 *"ChordismBridge listening on port 9871"* in the status bar, and the script logs to
 `~/Library/Preferences/Ableton/Live 12.x.x/Log.txt` (search for `ChordismBridge:`).
 
+**Plug-in parameters.** The bridge reaches a plug-in only through the parameters on Live's
+device panel, and Live fills that panel by itself only for plug-ins with at most 64
+parameters. Chordism has 125 since Phase 3, so add this line to
+`~/Library/Preferences/Ableton/Live 12.x.x/Options.txt` (create the file if needed) and restart
+Live:
+
+```
+-_PluginAutoPopulateThreshold=128
+```
+
+128 is Live's maximum: it puts the first 128 parameters on the panel, whatever the total. An
+instance loaded before the change keeps its empty panel; delete it (or its track) and load it
+again.
+
 Check it:
 
 ```sh
@@ -50,6 +64,8 @@ uv run python -m livebridge set_tempo '{"bpm": 97}'
 uv run pytest tests/test_offline.py        # no Live needed
 uv run pytest tests/test_timing_live.py    # Live running with the control surface selected
 uv run pytest tests/test_phase1_live.py    # Phase 1: chords + timing, VST3 and port routes
+uv run pytest tests/test_phase2_live.py    # Phase 2: progressions and shifters (VST3)
+uv run pytest tests/test_phase3_live.py    # Phase 3: strum, arp, repeat + velocity (VST3)
 CHORDISM_FORMAT=au uv run pytest tests/test_phase1_live.py    # the AU instrument (port route only)
 ```
 

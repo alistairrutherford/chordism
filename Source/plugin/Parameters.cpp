@@ -55,6 +55,24 @@ namespace chordism::params
 
         bool on (const std::atomic<float>* p) noexcept { return p->load() > 0.5f; }
         int whole (const std::atomic<float>* p) noexcept { return (int) std::lround (p->load()); }
+        int choice (const std::atomic<float>* p, int count) noexcept { return juce::jlimit (0, count - 1, whole (p)); }
+        double fraction (const std::atomic<float>* p) noexcept { return juce::jlimit (0.0, 1.0, (double) p->load() / 100.0); }
+
+        template <class Name>
+        juce::StringArray names (int count, Name name)
+        {
+            juce::StringArray a;
+            for (int i = 0; i < count; ++i)
+                a.add (name (i));
+            return a;
+        }
+
+        std::unique_ptr<juce::AudioParameterFloat> percent (const char* pid, const juce::String& name, float initial)
+        {
+            return std::make_unique<juce::AudioParameterFloat> (
+                id (pid), name, juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), initial,
+                juce::AudioParameterFloatAttributes().withLabel ("%"));
+        }
     }
 
     juce::String customDegree (int slot) { return numbered ("customDegree", slot, ""); }
@@ -62,6 +80,7 @@ namespace chordism::params
     juce::String shifterGroup (int slot) { return numbered ("shifter", slot, "Group"); }
     juce::String shifterKey (int slot)   { return numbered ("shifter", slot, "Key"); }
     juce::String shifterScale (int slot) { return numbered ("shifter", slot, "Scale"); }
+    juce::String seqStep (int pattern, int step) { return "seq" + juce::String (pattern + 1) + "Step" + juce::String (step + 1); }
 
     juce::String liveNoteName (int note)
     {
@@ -115,6 +134,44 @@ namespace chordism::params
         // The test pattern holds this shifter through every odd bar (TestPattern.h).
         layout.add (std::make_unique<AudioParameterChoice> (id (testShifter), "Test shifter",
                                                             StringArray { "Off", "1", "2", "3", "4", "5" }, 0));
+
+        // Phase 3: the chord-zone effects (Source/core/engine/ChordFx.h). Appended, never
+        // reordered; the choice lists come from the engine's enums, which only ever append.
+        const ChordFxSettings fx;
+        layout.add (std::make_unique<AudioParameterChoice> (id (stack), "Stack",
+                                                            names (numStackModes, [] (int i) { return stackModeName ((StackMode) i); }), 0));
+        layout.add (std::make_unique<AudioParameterChoice> (id (strum), "Strum",
+                                                            names (numStrumModes, [] (int i) { return strumModeName ((StrumMode) i); }), 0));
+        layout.add (std::make_unique<AudioParameterChoice> (id (strumRate), "Strum rate", names (numStrumRates, strumRateName), fx.strumRate));
+        layout.add (std::make_unique<AudioParameterFloat> (
+            id (strumMs), "Strum time", NormalisableRange<float> (0.0f, 200.0f, 0.1f), (float) fx.strumMs,
+            AudioParameterFloatAttributes().withLabel ("ms")));
+        layout.add (std::make_unique<AudioParameterChoice> (id (arp), "Arp",
+                                                            names (numArpPatterns, [] (int i) { return arpPatternName ((ArpPattern) i); }), 0));
+        layout.add (std::make_unique<AudioParameterChoice> (id (arpRate), "Arp rate", names (numPatternRates, patternRateName), fx.arpRate));
+        layout.add (std::make_unique<AudioParameterInt> (id (arpRange), "Arp range", minArpRange, maxArpRange, fx.arpRange));
+        layout.add (percent (arpGate, "Arp gate", (float) (fx.arpGate * 100.0)));
+        layout.add (std::make_unique<AudioParameterBool> (id (repeat), "Repeat", false));
+        layout.add (std::make_unique<AudioParameterChoice> (id (repeatRate), "Repeat rate", names (numPatternRates, patternRateName), fx.repeat.rate));
+        layout.add (percent (repeatGate, "Repeat gate", (float) (fx.repeat.gate * 100.0)));
+        layout.add (std::make_unique<AudioParameterBool> (id (seq), "Step seq", false));
+        layout.add (std::make_unique<AudioParameterChoice> (id (seqPattern), "Seq pattern", StringArray { "1", "2", "3", "4" }, 0));
+        layout.add (percent (seqSwing, "Seq swing", 0.0f));
+        layout.add (percent (seqGate, "Seq gate", (float) (fx.seq.gate * 100.0)));
+        layout.add (std::make_unique<AudioParameterBool> (id (seqSustain), "Seq sustain", false));
+        layout.add (std::make_unique<AudioParameterChoice> (id (velocity), "Velocity",
+                                                            names (numVelocityCurves, [] (int i) { return velocityCurveName ((VelocityCurve) i); }), 0));
+        layout.add (std::make_unique<AudioParameterInt> (id (velocityPeak), "Velocity peak", 1, 127, fx.velocity.peak));
+        layout.add (percent (velocityRange, "Velocity range", (float) (fx.velocity.range * 100.0)));
+        layout.add (std::make_unique<AudioParameterChoice> (id (hold), "Hold",
+                                                            names (numHoldModes, [] (int i) { return holdModeName ((HoldMode) i); }), 0));
+
+        // The four sequencer patterns, 16 steps each, starting as the factory patterns.
+        const auto patterns = defaultSeqPatterns();
+        for (int p = 0; p < numSeqPatterns; ++p)
+            for (int s = 0; s < numSeqSteps; ++s)
+                layout.add (std::make_unique<AudioParameterBool> (id (seqStep (p, s)), "Seq " + String (p + 1) + " step " + String (s + 1),
+                                                                  ((patterns[(size_t) p] >> s) & 1) != 0));
         return layout;
     }
 
@@ -133,7 +190,27 @@ namespace chordism::params
           portTrimMs (state.getRawParameterValue (params::portTrimMs)),
           progression (state.getRawParameterValue (params::progression)),
           shifterMode (state.getRawParameterValue (params::shifterMode)),
-          testShifter (state.getRawParameterValue (params::testShifter))
+          testShifter (state.getRawParameterValue (params::testShifter)),
+          fxStack (state.getRawParameterValue (params::stack)),
+          fxStrum (state.getRawParameterValue (params::strum)),
+          fxStrumRate (state.getRawParameterValue (params::strumRate)),
+          fxStrumMs (state.getRawParameterValue (params::strumMs)),
+          fxArp (state.getRawParameterValue (params::arp)),
+          fxArpRate (state.getRawParameterValue (params::arpRate)),
+          fxArpRange (state.getRawParameterValue (params::arpRange)),
+          fxArpGate (state.getRawParameterValue (params::arpGate)),
+          fxRepeat (state.getRawParameterValue (params::repeat)),
+          fxRepeatRate (state.getRawParameterValue (params::repeatRate)),
+          fxRepeatGate (state.getRawParameterValue (params::repeatGate)),
+          fxSeq (state.getRawParameterValue (params::seq)),
+          fxSeqPattern (state.getRawParameterValue (params::seqPattern)),
+          fxSeqSwing (state.getRawParameterValue (params::seqSwing)),
+          fxSeqGate (state.getRawParameterValue (params::seqGate)),
+          fxSeqSustain (state.getRawParameterValue (params::seqSustain)),
+          fxVelocity (state.getRawParameterValue (params::velocity)),
+          fxVelocityPeak (state.getRawParameterValue (params::velocityPeak)),
+          fxVelocityRange (state.getRawParameterValue (params::velocityRange)),
+          fxHold (state.getRawParameterValue (params::hold))
     {
         jassert (enable && key && scale && group && split && chordOctave && muteChords && muteScale
                  && testPattern && port && portCompensate && portTrimMs && progression && shifterMode && testShifter);
@@ -151,6 +228,50 @@ namespace chordism::params
             shifterScale[(size_t) n] = state.getRawParameterValue (params::shifterScale (n));
             jassert (shifterKind[(size_t) n] && shifterGroup[(size_t) n] && shifterKey[(size_t) n] && shifterScale[(size_t) n]);
         }
+
+        jassert (fxStack && fxStrum && fxStrumRate && fxStrumMs && fxArp && fxArpRate && fxArpRange && fxArpGate && fxRepeat
+                 && fxRepeatRate && fxRepeatGate && fxSeq && fxSeqPattern && fxSeqSwing && fxSeqGate && fxSeqSustain && fxVelocity
+                 && fxVelocityPeak && fxVelocityRange && fxHold);
+        for (int p = 0; p < numSeqPatterns; ++p)
+            for (int s = 0; s < numSeqSteps; ++s)
+            {
+                fxSeqSteps[(size_t) p][(size_t) s] = state.getRawParameterValue (params::seqStep (p, s));
+                jassert (fxSeqSteps[(size_t) p][(size_t) s] != nullptr);
+            }
+    }
+
+    ChordFxSettings Snapshot::chordFx() const noexcept
+    {
+        ChordFxSettings fx;
+        fx.stack = (StackMode) choice (fxStack, numStackModes);
+        fx.strum = (StrumMode) choice (fxStrum, numStrumModes);
+        fx.strumRate = choice (fxStrumRate, numStrumRates);
+        fx.strumMs = juce::jlimit (0.0, 200.0, (double) fxStrumMs->load());
+        fx.arp = (ArpPattern) choice (fxArp, numArpPatterns);
+        fx.arpRate = choice (fxArpRate, numPatternRates);
+        fx.arpRange = juce::jlimit (minArpRange, maxArpRange, whole (fxArpRange));
+        fx.arpGate = fraction (fxArpGate);
+        fx.repeat.on = on (fxRepeat);
+        fx.repeat.rate = choice (fxRepeatRate, numPatternRates);
+        fx.repeat.gate = fraction (fxRepeatGate);
+        fx.seq.on = on (fxSeq);
+        fx.seq.pattern = choice (fxSeqPattern, numSeqPatterns);
+        fx.seq.swing = fraction (fxSeqSwing);
+        fx.seq.gate = fraction (fxSeqGate);
+        fx.seq.sustain = on (fxSeqSustain);
+        for (int p = 0; p < numSeqPatterns; ++p)
+        {
+            uint16_t bits = 0;
+            for (int s = 0; s < numSeqSteps; ++s)
+                if (on (fxSeqSteps[(size_t) p][(size_t) s]))
+                    bits = (uint16_t) (bits | (1u << s));
+            fx.seq.patterns[(size_t) p] = bits;
+        }
+        fx.velocity.curve = (VelocityCurve) choice (fxVelocity, numVelocityCurves);
+        fx.velocity.peak = juce::jlimit (1, 127, whole (fxVelocityPeak));
+        fx.velocity.range = fraction (fxVelocityRange);
+        fx.hold = (HoldMode) choice (fxHold, numHoldModes);
+        return fx;
     }
 
     ChordGroup Snapshot::chordGroup() const noexcept
@@ -189,6 +310,7 @@ namespace chordism::params
             t.scale = juce::jlimit (0, numScales, whole (shifterScale[(size_t) n])) - 1;
         }
         s.testShifter = juce::jlimit (0, numShifters, whole (testShifter)) - 1;
+        s.fx = chordFx();
         return s;
     }
 }

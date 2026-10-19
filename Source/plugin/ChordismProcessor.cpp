@@ -60,6 +60,8 @@ namespace chordism
         Transport t = lastTransport;
         t.sampleRate = getSampleRate() > 0.0 ? getSampleRate() : preparedSampleRate.load();
         t.playing = false;
+        t.looping = false;
+        t.hasBarStart = false;
 
         blockNs = VirtualMidiOut::nowNs();
         bool hostClock = false;
@@ -77,6 +79,18 @@ namespace chordism
                 {
                     t.numerator = ts->numerator;
                     t.denominator = ts->denominator;
+                }
+                // Loop points and the bar position, for the effects' clock (Source/core/engine/Clock.h).
+                if (auto loop = pos->getLoopPoints(); loop.hasValue() && std::isfinite (loop->ppqStart) && std::isfinite (loop->ppqEnd))
+                {
+                    t.looping = pos->getIsLooping() && loop->ppqEnd > loop->ppqStart;
+                    t.loopStart = loop->ppqStart;
+                    t.loopEnd = loop->ppqEnd;
+                }
+                if (auto bar = pos->getPpqPositionOfLastBarStart(); bar.hasValue() && std::isfinite (*bar))
+                {
+                    t.hasBarStart = true;
+                    t.barStartPpq = *bar;
                 }
 
                 // The port's timestamps use the host's time for this block when it's on the mach

@@ -1,7 +1,8 @@
 // Which output notes each source owns (PLAN.md §4.5, "Note bookkeeping").
 //
-// A source is anything that starts notes: an input key, and later a pattern slot, a held
-// chord or a sequencer step. Releasing a source ends exactly the notes it started, whatever
+// A source is anything that starts notes: an input key, a chord performance's strike or arp
+// step (held by its key, by Hold, or opened by a sequencer step; ChordFx.h), and later a
+// pattern slot. Releasing a source ends exactly the notes it started, whatever
 // changed in between (Key, Scale, Split, Octave…). A pitch owned by several sources is
 // reference-counted: the first owner sends the note-on, the last one to let go sends the
 // note-off, so one source never cuts another's note.
@@ -19,8 +20,8 @@ namespace chordism
     {
     public:
         using Source = uint16_t;
-        static constexpr int maxSources = 256;          // 0..127 are input keys
-        static constexpr int maxNotesPerSource = 48;
+        static constexpr int maxSources = 384;          // 0..127 input keys, 128..383 chord performances (ChordFx.h)
+        static constexpr int maxNotesPerSource = 64;
 
         // Starts `note` for `source`. A source that already owns the pitch keeps it (no second
         // note-on). Returns false, and owns nothing new, if the source is full or the output
