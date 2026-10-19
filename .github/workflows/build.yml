@@ -1,0 +1,79 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  JUCE_VERSION: 8.0.14
+  PLUGINVAL_VERSION: v1.0.4
+
+jobs:
+  macos:
+    name: Build, core tests, auval, pluginval
+    runs-on: macos-14
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v5
+        with:
+          path: repo
+
+      - name: Checkout JUCE
+        uses: actions/checkout@v5
+        with:
+          repository: juce-framework/JUCE
+          ref: ${{ env.JUCE_VERSION }}
+          path: JUCE
+
+      - name: Core tests (no JUCE needed)
+        run: repo/Tests/run_tests.sh
+
+      - name: Build Projucer
+        run: |
+          set -o pipefail
+          xcodebuild -project JUCE/extras/Projucer/Builds/MacOSX/Projucer.xcodeproj \
+                     -configuration Release build | tail -3
+
+      - name: Point module paths at the runner's JUCE and regenerate both projects
+        run: |
+          JMOD="$GITHUB_WORKSPACE/JUCE/modules"
+          PROJUCER="JUCE/extras/Projucer/Builds/MacOSX/build/Release/Projucer.app/Contents/MacOS/Projucer"
+          # The committed .jucer files hold the developer machine's module path.
+          for j in repo/Chordism.jucer repo/MidiFX/ChordismMidiFX.jucer; do
+            sed -i '' "s#/Users/alistairrutherford/Development/JUCE/modules#$JMOD#g" "$j"
+            "$PROJUCER" --resave "$j"
+          done
+
+      - name: Build VST3, AU instrument and Standalone
+        run: |
+          # Without pipefail the step's status is grep's, so a failed build would pass.
+          set -o pipefail
+          xcodebuild -project repo/Builds/MacOSX/Chordism.xcodeproj \
+                     -target "Chordism - All" -configuration Release build | \
+            grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
+
+      - name: Build AU MIDI effect
+        run: |
+          set -o pipefail
+          xcodebuild -project repo/MidiFX/Builds/MacOSX/ChordismMidiFX.xcodeproj \
+                     -target "ChordismMidiFX - All" -configuration Release build | \
+            grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
+
+      - name: Install pluginval
+        run: |
+          curl -fsSL -o pluginval.zip \
+            "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
+          unzip -q pluginval.zip -d pluginval
+          echo "PLUGINVAL=$GITHUB_WORKSPACE/pluginval/pluginval.app/Contents/MacOS/pluginval" >> "$GITHUB_ENV"
+
+      - name: auval (aumu + aumi) and pluginval (strictness 10)
+        run: repo/Tests/run_validation.sh
+
+      - name: Upload pluginval logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pluginval-logs
+          path: repo/Tests/build/pluginval
+          if-no-files-found: ignore

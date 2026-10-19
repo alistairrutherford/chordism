@@ -69,7 +69,7 @@ Priority: **P1** is the core instrument (Phases 1–5). **P2** finishes ChordPri
 | Multi | Instance Sync (Key, Scale, Chord shared by all instances) | Process-wide shared session with sync groups | P2 |
 | Prefs | Tooltips, keyboard display, colours, shifter mode, Toggle/Standard | Same, stored per user | P2 |
 | Extra | — | Separate MIDI output channel for Chord and Smart Scale parts | P3 |
-| Extra | — | CoreMIDI virtual output port (reusing NoteCap's `VirtualMidiOut`) | P3 |
+| Extra | — | CoreMIDI virtual output port "Chordism Out n" (built in Phase 1; the AU instrument's route in Live) | P1 |
 
 ---
 
@@ -91,7 +91,20 @@ and Live ignores AU MIDI output, so in Live its MIDI reaches an instrument throu
 virtual port (verified in Phase 0). The port works from every build.
 
 JUCE needs a **separate Projucer target** for `aumi` (`isMidiEffect` is set at compile time).
-It shares all of `Source/`, so this is a second `.jucer` file rather than separate code.
+It shares all of `Source/`, so this is a second `.jucer` file rather than separate code. It lives in
+`MidiFX/`, because Projucer always writes `JuceLibraryCode/` (with `JucePluginDefines.h`) next to
+the `.jucer`, so two projects in one folder would overwrite each other's plug-in defines.
+
+**Identifiers (fixed in Phase 1, 2026-10-19; never change them, or Live and Logic lose saved
+instances):**
+
+| Build | Bundle ID | Manufacturer | Plug-in code | AU type |
+|---|---|---|---|---|
+| `Chordism.jucer`: VST3, AU, Standalone | `com.alistairrutherford.chordism` | `ARut` (Alistair Rutherford) | `Cdsm` | `aumu` |
+| `MidiFX/ChordismMidiFX.jucer`: AU "Chordism MIDI FX" | `com.alistairrutherford.chordism.midifx` | `ARut` | `Cdsf` | `aumi` |
+
+Host parameter IDs (`Source/plugin/Parameters.h`, version 1) and the order of the Key, Scale and
+Chord Group choices are saved in sets too: only append.
 
 **Recording, as in ChordPrism.** By default, the Chordism track records the **trigger keys**,
 so every parameter can still be changed after recording. The generated notes can be recorded
@@ -124,10 +137,29 @@ with Record Quantization off:
 
 - **VST3 route:** sample-accurate. It needs no correction.
 - **Port route:** late by **one audio block plus about 70 samples (~1.6 ms)**, and very
-  consistent. The fixed *Port offset* in the spike can't be right at every buffer size, so
-  Chordism stamps port events earlier by `blockSize / sampleRate + ~1.6 ms`, measured at
-  `prepareToPlay`. A user offset stays for trimming. Re-run the timing test at 48 and 96 kHz in
-  Phase 1 to confirm the constant.
+  consistent.
+
+**Phase 1 re-measurement (2026-10-19, `LiveBridge/tests/test_phase1_live.py`, buffer 1024).**
+The plan was to stamp port events earlier by `blockSize / sampleRate + ~1.6 ms`. **That doesn't
+work in Live.** Live honours a timestamp at most ~1.6 ms before the event is sent. An earlier
+stamp is clamped to the event's arrival, so all of a block's events land together and the
+offsets smear over a whole buffer (mean +11.6 ms, spread 23 ms at 44.1 kHz). A trim sweep with
+compensation off shows the clamp: the latest note never lands before +1 buffer. An event can't
+arrive before Chordism has processed its block, so **the port route always records one buffer
+late**, like a hardware MIDI input. Only the fixed part is compensated: port events are
+stamped **1.5 ms** early, just under the smallest fixed delay measured, so nothing is clamped.
+The *Port trim* parameter stays for fine-tuning.
+
+| Rate | VST3 "MIDI From" | Port, raw (compensation off) | Port, Chordism (1.5 ms early) |
+|---|---|---|---|
+| 44.1 kHz | 0.000 ms on every note | buffer + 1.654 ms (72.9 samples) | buffer + 0.15 ms, spread 0.05–0.11 ms |
+| 48 kHz | 0.000 ms | buffer + 1.656 ms (79.5 samples) | — (−1.6 ms trim: buffer + 0.04 ms) |
+| 96 kHz | 0.000 ms | buffer + 1.690 ms (162 samples) | buffer + 0.18–0.20 ms, spread 0.13–0.17 ms |
+
+The fixed part is a time (1.54–1.71 ms over every rate and buffer measured), not a number of
+samples. The AU instrument through the port gives the same result (44.1 kHz: buffer + 0.17–0.19
+ms). **For recording, use the VST3 route**; the port route is for the AU build and for live
+monitoring.
 
 ---
 
@@ -166,11 +198,14 @@ pitch(k, o)   = keyRoot + scale[scaleIndex(k) mod 7] + 12·⌊scaleIndex(k)/7⌋
                 + accidental[k] + 12·o + 12·outputOctave        for each o in octaveMask
 ```
 
+- **Scales (Phase 1):** Major, Natural Minor, Harmonic Minor, Melodic Minor (ascending),
+  Dorian, Phrygian, Lydian, Mixolydian, Locrian, Harmonic Major, Phrygian Dominant, Hungarian
+  Minor, Double Harmonic. The chord zone's default octave puts C at MIDI 48, moved by *Chord Octave*.
 - **Chord Groups** fill in `on` and `octaveMask` for all 7 slots. Factory groups (our own list):
   Triads, Power (1-5), Sus2, Sus4, 6ths, Sevenths, Add9, Ninths, Elevenths, Thirteenths,
   1st Inversion, 2nd Inversion, Open (spread) Triads, Drop-2 Sevenths, Shell (1-3-7), Neo-Soul
   (9ths without the 5th), Quartal. Changing the group resets the editor edits, as ChordPrism does.
-- **Scale default accidentals:** a per-scale table, such as the harmonic-minor V and the melodic-minor IV, so that common chords in each scale come out right without editing.
+- **Scale default accidentals:** a per-scale table, so that common chords in each scale come out right without editing. Phase 1 has one entry: natural minor V raises its 3rd (the leading tone). Harmonic and (ascending) melodic minor already give a major V and IV.
 - **Chord naming:** a pitch-class-set → name recogniser (root, quality, extensions, slash bass). The Roman numeral follows ChordPrism's style: upper case for major, lower case for minor, `*` for diminished, `+` for augmented.
 - **Active Chord dropdown / right-click chord name:** a list of chord types for that root. Choosing one rewrites the steps (on and accidental) for that slot.
 - **Voice leading (P2):** when Smooth is on, each new chord picks the inversion and octave whose notes are closest to the previous chord (minimum total semitone distance), anchored to the Output Octave.
@@ -347,7 +382,7 @@ instrument that covers the core of ChordPrism.
 ```
 chordism/
 ├── Chordism.jucer              # VST3 + AU instrument + Standalone
-├── ChordismMidiFX.jucer        # AU MIDI effect (aumi) for Logic, same Source/
+├── MidiFX/ChordismMidiFX.jucer # AU MIDI effect (aumi) for Logic, same Source/ (own folder, §3)
 ├── Builds/MacOSX/              # generated by Projucer
 ├── JuceLibraryCode/            # generated by Projucer
 ├── Source/
@@ -382,7 +417,35 @@ chordism/
 |---|---|---|
 | 0. Feasibility | **Done (2026-10-16).** Routing, hosting, drag-out and Instance Sync all confirmed in Live 12.4.6. | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Results by round are in `Spikes/Phase0/README.md`. Routing decision is in §3. |
 | Phase 0 carry-over: recording timing | **Done (2026-10-19).** VST3 is sample-accurate; the port is one block + ~1.6 ms late. | Measured with `LiveBridge/` (§3, §8). |
-| 1. Skeleton + theory core | Next | Build port-timestamp compensation into the new port code (§3). Make every tested setting a host parameter so LiveBridge can drive it. |
+| 1. Skeleton + theory core | **Done (2026-10-19).** Live plays C-major chords from the chord zone through VST3 MIDI From (sample-accurate) and the virtual port (one buffer late, §3), checked by LiveBridge. | Details below. |
+| 2. Chord Generator complete | Next | Chord Editor model in the UI state, Progressions, Shifters, chord naming. |
+
+**Phase 1 (2026-10-19):**
+- **Projects:** `Chordism.jucer` (VST3, AU `aumu`, Standalone) and `MidiFX/ChordismMidiFX.jucer`
+  (AU `aumi`), both on `Source/`. Identifiers are in §3. Ad-hoc signed by Xcode's default (`-`).
+- **Core (plain C++):** `Source/core/theory` (13 scales, 17 Chord Groups, `ChordSlot`/`Step`,
+  default accidentals) and `Source/core/engine` (`InputRouter`, ref-counted `VoiceTracker`, plain
+  chord output, `TestPattern`, `PortTiming`, `ChordismEngine`). The plug-in is a thin adapter.
+  In Phase 1 the Smart Scale zone passes its notes through (mappings are Phase 4), and the chord
+  zone's black keys are consumed (shifters are Phase 2).
+- **Host parameters:** Enable, Key, Scale, Chord Group, Split, Chord Octave, Mute CG, Mute SS,
+  Test pattern, Virtual port, Port compensation, Port trim. The Test pattern presses chord-zone
+  key C, D, E… B, C… on each beat (slot = beat mod 7), an eighth note long, through the same path as the user's keys.
+- **Tests:** `Tests/run_tests.sh`: all 18,564 chords (12 keys × 13 scales × 17 groups × 7)
+  match the music21 reference `Tests/fixtures/theory_reference.json` (written by
+  `Tools/gen_theory_fixture.py`, music21 10.5). Router, VoiceTracker, chord output, the test
+  pattern under a fake transport (32–2048-sample blocks, 44.1/48/96 kHz), port stamps, and
+  stuck-note fuzzing (8 seeds × 5000 blocks of random keys, settings, transport jumps and block
+  sizes: no double note-on, no stray note-off, nothing left sounding).
+- **Host validation:** `Tests/run_validation.sh`: `auval` aumu + aumi and `pluginval` 1.0.4 at
+  strictness 10 on the VST3, the AU instrument and the AU MIDI effect: all pass.
+  `.github/workflows/build.yml` runs the core tests, both builds, auval and pluginval on macOS;
+  it hasn't run on GitHub yet (nothing pushed).
+- **Live (`LiveBridge/tests/test_phase1_live.py`):** the recorded chords match the reference
+  on all 16 beats for C major Triads and E♭ Dorian Sevenths, through VST3 MIDI From and the
+  port, at 44.1 and 96 kHz, and through the AU instrument via the port. Timing is in §3.
+- **Not checked yet:** the `aumi` build in Logic (auval and pluginval only); Live shows the AU's
+  integer parameters (Split, Chord Octave) as normalised numbers (the VST3 shows C3 and 0).
 
 **Phase 0 in Live 12.4.6:**
 - **Drag MIDI out: passed** (round 1). Dropped clips are exactly on the grid.
@@ -390,5 +453,5 @@ chordism/
 - **Hosting: passed** (round 2). The hosted instrument and its settings are saved and restored. Fixes along the way: tell the host when state changes, keep a pending or failed restore in the next save, and show the restored instrument in the UI.
 - **Instance Sync: passed** (round 2), once Sync was on for both instances. Live runs all instances in one process.
 
-**Other findings:** a JUCE host gets no MIDI output from the AU *instrument* build. That doesn't matter for Live, but the Logic `aumi` target needs its own check in Phase 1.
-`pluginval` isn't installed on this Mac. Set it up in Phase 1 (CI).
+**Other findings:** a JUCE host gets no MIDI output from the AU *instrument* build. That doesn't matter for Live (it uses the port), and the Logic `aumi` target passes auval and pluginval; it hasn't been tried in Logic.
+`pluginval` 1.0.4 is installed in `~/Applications/pluginval.app` (Phase 1).

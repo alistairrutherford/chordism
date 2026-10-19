@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="CdsmPj" name="Chordism" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.1.0"
+              companyName="Alistair Rutherford" companyWebsite="https://github.com/alistairrutherford/chordism"
+              bundleIdentifier="com.alistairrutherford.chordism"
+              pluginFormats="buildAU,buildVST3,buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn,pluginProducesMidiOut"
+              pluginName="Chordism" pluginDesc="One key plays a chord: a MIDI chord generator"
+              pluginManufacturer="Alistair Rutherford" pluginManufacturerCode="ARut"
+              pluginCode="Cdsm" pluginAUMainType="'aumu'" pluginVST3Category="Instrument,Tools"
+              cppLanguageStandard="17">
+  <MAINGROUP id="csMain" name="Chordism">
+    <GROUP id="csSrc0" name="Source">
+      <GROUP id="csGrp0" name="core/theory">
+        <FILE id="csF001" name="Scales.h" compile="0" resource="0" file="Source/core/theory/Scales.h"/>
+        <FILE id="csF002" name="ChordModel.h" compile="0" resource="0" file="Source/core/theory/ChordModel.h"/>
+        <FILE id="csF003" name="ChordGroups.h" compile="0" resource="0" file="Source/core/theory/ChordGroups.h"/>
+      </GROUP>
+      <GROUP id="csGrp1" name="core/engine">
+        <FILE id="csF004" name="MidiEvents.h" compile="0" resource="0" file="Source/core/engine/MidiEvents.h"/>
+        <FILE id="csF005" name="Transport.h" compile="0" resource="0" file="Source/core/engine/Transport.h"/>
+        <FILE id="csF006" name="InputRouter.h" compile="0" resource="0" file="Source/core/engine/InputRouter.h"/>
+        <FILE id="csF007" name="VoiceTracker.h" compile="0" resource="0" file="Source/core/engine/VoiceTracker.h"/>
+        <FILE id="csF008" name="TestPattern.h" compile="0" resource="0" file="Source/core/engine/TestPattern.h"/>
+        <FILE id="csF009" name="PortTiming.h" compile="0" resource="0" file="Source/core/engine/PortTiming.h"/>
+        <FILE id="csF010" name="ChordismEngine.h" compile="0" resource="0" file="Source/core/engine/ChordismEngine.h"/>
+      </GROUP>
+      <GROUP id="csGrp2" name="plugin">
+        <FILE id="csF011" name="ChordismProcessor.h" compile="0" resource="0" file="Source/plugin/ChordismProcessor.h"/>
+        <FILE id="csF012" name="ChordismProcessor.cpp" compile="1" resource="0" file="Source/plugin/ChordismProcessor.cpp"/>
+        <FILE id="csF013" name="Parameters.h" compile="0" resource="0" file="Source/plugin/Parameters.h"/>
+        <FILE id="csF014" name="Parameters.cpp" compile="1" resource="0" file="Source/plugin/Parameters.cpp"/>
+        <FILE id="csF015" name="VirtualMidiOut.h" compile="0" resource="0" file="Source/plugin/VirtualMidiOut.h"/>
+        <FILE id="csF016" name="VirtualMidiOut.cpp" compile="1" resource="0" file="Source/plugin/VirtualMidiOut.cpp"/>
+      </GROUP>
+      <GROUP id="csGrp3" name="ui">
+        <FILE id="csF017" name="ChordismEditor.h" compile="0" resource="0" file="Source/ui/ChordismEditor.h"/>
+        <FILE id="csF018" name="ChordismEditor.cpp" compile="1" resource="0" file="Source/ui/ChordismEditor.cpp"/>
+      </GROUP>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0" JUCE_WEB_BROWSER="0"
+               JUCE_USE_CURL="0"/>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX" extraFrameworks="CoreMIDI">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="Chordism" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="Chordism" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="/Users/alistairrutherford/Development/JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
