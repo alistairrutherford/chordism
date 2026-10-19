@@ -55,7 +55,40 @@ namespace chordism::params
     inline constexpr const char* velocityPeak = "velocityPeak";
     inline constexpr const char* velocityRange = "velocityRange";
     inline constexpr const char* hold         = "hold";
-    juce::String seqStep (int pattern, int step);   // "seq1Step1".."seq4Step16"
+
+    // Phase 4 (2026-10-19): the 64 "seqNStepM" bools of Phase 3 were replaced by one 16-bit
+    // mask per pattern (bit s = step s + 1), so Live's panel (at most 128 parameters, LiveBridge)
+    // has room for the Smart Scale zone. Saved states are migrated (ChordismProcessor).
+    juce::String seqStep (int pattern, int step);   // the old IDs "seq1Step1".."seq4Step16", for migration
+    juce::String seqSteps (int pattern);            // "seq1Steps".."seq4Steps"
+
+    // Phase 4 (appended): the Smart Scale zone and its pattern slots.
+    inline constexpr const char* mapping       = "mapping";
+    inline constexpr const char* inversions    = "inversions";
+    inline constexpr const char* noteRepeat    = "noteRepeat";
+    inline constexpr const char* patternSlot   = "patternSlot";
+    inline constexpr const char* smartOctave   = "smartOctave";
+    inline constexpr const char* smartStack    = "smartStack";
+    inline constexpr const char* smartSeq      = "smartSeq";
+    inline constexpr const char* smartSeqPattern = "smartSeqPattern";
+    inline constexpr const char* smartSeqSwing = "smartSeqSwing";
+    inline constexpr const char* smartSeqGate  = "smartSeqGate";
+    inline constexpr const char* smartSeqSustain = "smartSeqSustain";
+    inline constexpr const char* smartVelocity = "smartVelocity";
+    inline constexpr const char* smartVelocityPeak = "smartVelocityPeak";
+    inline constexpr const char* smartVelocityRange = "smartVelocityRange";
+    inline constexpr const char* smartHold     = "smartHold";
+    inline constexpr const char* testSmart     = "testSmart";
+    juce::String smartSeqSteps (int pattern);       // "smartSeq1Steps".."smartSeq4Steps"
+    juce::String patternArp (int slot);             // "pattern1Arp".."pattern5Arp"
+    juce::String patternRate (int slot);            // "pattern1Rate"…
+    juce::String patternRange (int slot);           // "pattern1Range"…
+    juce::String patternChord (int slot);           // "pattern1Chord"…
+    juce::String patternGate (int slot);            // "pattern1Gate"…
+
+    // A sequencer pattern as Live shows it: "x" for an active step, "." for a rest, step 1 first.
+    juce::String stepsText (int mask);
+    int stepsFromText (const juce::String& text);
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
@@ -69,6 +102,7 @@ namespace chordism::params
         ChordGroup chordGroup() const noexcept;
         Scale currentScale() const noexcept;
         ChordFxSettings chordFx() const noexcept;
+        SmartSettings smart() const noexcept;
         bool portEnabled() const noexcept { return port->load() > 0.5f; }
         bool portCompensation() const noexcept { return portCompensate->load() > 0.5f; }
         double portTrim() const noexcept { return (double) portTrimMs->load(); }
@@ -112,7 +146,26 @@ namespace chordism::params
         std::atomic<float>* fxVelocityPeak;
         std::atomic<float>* fxVelocityRange;
         std::atomic<float>* fxHold;
-        std::array<std::array<std::atomic<float>*, numSeqSteps>, numSeqPatterns> fxSeqSteps {};
+        std::array<std::atomic<float>*, numSeqPatterns> fxSeqSteps {};
+
+        std::atomic<float>* ssMapping;
+        std::atomic<float>* ssInversions;
+        std::atomic<float>* ssNoteRepeat;
+        std::atomic<float>* ssPatternSlot;
+        std::atomic<float>* ssOctave;
+        std::atomic<float>* ssStack;
+        std::atomic<float>* ssSeq;
+        std::atomic<float>* ssSeqPattern;
+        std::atomic<float>* ssSeqSwing;
+        std::atomic<float>* ssSeqGate;
+        std::atomic<float>* ssSeqSustain;
+        std::atomic<float>* ssVelocity;
+        std::atomic<float>* ssVelocityPeak;
+        std::atomic<float>* ssVelocityRange;
+        std::atomic<float>* ssHold;
+        std::atomic<float>* ssTest;
+        std::array<std::atomic<float>*, numSeqPatterns> ssSeqSteps {};
+        std::array<std::atomic<float>*, numPatternSlots> patArp {}, patRate {}, patRange {}, patChord {}, patGate {};
     };
 
     // MIDI note name as Live writes it (60 = C3).

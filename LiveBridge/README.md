@@ -38,7 +38,7 @@ Then restart Live and, in **Settings → Link, Tempo & MIDI → Control Surface*
 
 **Plug-in parameters.** The bridge reaches a plug-in only through the parameters on Live's
 device panel, and Live fills that panel by itself only for plug-ins with at most 64
-parameters. Chordism has 125 since Phase 3, so add this line to
+parameters. Chordism has 111 since Phase 4 (126 in Phase 3), so add this line to
 `~/Library/Preferences/Ableton/Live 12.x.x/Options.txt` (create the file if needed) and restart
 Live:
 
@@ -46,7 +46,8 @@ Live:
 -_PluginAutoPopulateThreshold=128
 ```
 
-128 is Live's maximum: it puts the first 128 parameters on the panel, whatever the total. An
+128 is Live's maximum. Live's manual says a plug-in with more parameters than the threshold
+opens with an empty panel, so Chordism must stay at 128 or fewer (PLAN.md §12, Phase 4). An
 instance loaded before the change keeps its empty panel; delete it (or its track) and load it
 again.
 

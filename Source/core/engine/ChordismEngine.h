@@ -1,7 +1,8 @@
 // The MIDI engine: input router, the Chord Generator (Chord Groups, Chord Editor edits,
 // Progressions, Shifters), the chord-zone effects (ChordFx.h: Stack, Strum, Arp, Repeat, Step
-// Sequencer, Velocity Algorithm, Hold) on the Clock, the test pattern, and note bookkeeping
-// through VoiceTracker.
+// Sequencer, Velocity Algorithm, Hold) on the Clock, the Smart Scale zone (ScaleMapper.h,
+// PatternEngine.h: mappings, patterns, Note Repeat and its own effect chain), the test
+// pattern, and note bookkeeping through VoiceTracker.
 // Plain C++, no JUCE, no allocation; the plug-in is a thin adapter around it, so every
 // behaviour here is unit-testable.
 //
@@ -9,7 +10,9 @@
 //                            Chord Group or the degree's editor edits, Key, Scale, Chord Octave,
 //                            then the effect chain (one performance per key, ChordFx.h)
 //   chord zone, black key  → shifter (Shifters.h): swaps in its Chord Group or Key/Scale
-//   Smart Scale zone       → passed through on the output channel (mappings are Phase 4)
+//   Smart Scale zone       → white keys: the Mapping's tone for the current chord (the chord
+//                            slot played last); black keys: pattern slots 1-5; then the Smart
+//                            zone's chain (PatternEngine.h), one performance per key
 //   Enable off             → input passes through unchanged
 //
 // Whenever the chords change while chord keys are held (a parameter, an edit, a shifter), each
@@ -17,8 +20,8 @@
 // retriggers it (PLAN.md §4.2). An arp takes the new chord at its next step.
 //
 // A block is processed in the Clock's segments (split at loop wraps). Within a segment, input
-// and queued events run in sample order; at one sample, queued note-offs come first, then
-// input, then queued note-ons.
+// and queued events (of both zones) run in sample order; at one sample, queued note-offs come
+// first, then input, then queued note-ons; between the zones, the chord zone's first.
 #pragma once
 
 #include "../theory/ChordEditor.h"
@@ -26,6 +29,7 @@
 #include "Clock.h"
 #include "InputRouter.h"
 #include "MidiEvents.h"
+#include "PatternEngine.h"
 #include "Shifters.h"
 #include "TestPattern.h"
 #include "Transport.h"
@@ -53,12 +57,19 @@ namespace chordism
         int testShifter = -1;             // -1 = off, else the shifter slot the test pattern holds
         int outputChannel = 0;            // 0..15
         ChordFxSettings fx;               // Phase 3: the chord-zone effects
+        SmartSettings smart;              // Phase 4: the Smart Scale zone
+        int testSmart = 0;                // TestPattern::smartOff, smartTones, smartPattern + n
     };
 
     class ChordismEngine
     {
     public:
-        ChordismEngine() { refreshChords (0, nullptr); }
+        ChordismEngine()
+        {
+            smart.setSibling (&performer);
+            performer.setSibling (&smart);
+            refreshChords (0, nullptr);
+        }
 
         // Processes one block. `in` must be sorted by sample. Appends to `out` in sample order.
         // `edits` is the Chord Editor's current snapshot (see adoptEdits for when it applies).
@@ -68,6 +79,7 @@ namespace chordism
             numSamples = numSamples > 0 ? numSamples : 0;
             clock.beginBlock (t, numSamples);
             performer.setSegment (0);
+            smart.setSegment (0);
 
             if (resetRequested.exchange (false))
                 releaseAll (0, out);
@@ -75,11 +87,17 @@ namespace chordism
             if (wasPlaying && ! t.playing)
                 releaseAll (0, out);   // transport stop: all notes off (PLAN.md §5)
             if (! wasPlaying && t.playing)
+            {
                 performer.transportStarted();
+                smart.transportStarted();
+            }
             wasPlaying = t.playing;
 
             if (clock.jumpedAtStart())
+            {
                 performer.transportJump (clock.jumpDelta(), 0, out);
+                smart.transportJump (clock.jumpDelta(), 0, out);
+            }
 
             applySettings (s, edits, out);
 
@@ -89,14 +107,18 @@ namespace chordism
                 const ClockSegment g = clock.segment (seg);
                 const bool last = seg == clock.numSegments() - 1;
                 performer.setSegment (seg);
+                smart.setSegment (seg);
                 if (seg > 0)
+                {
                     performer.transportJump (clock.wrapDelta (seg), g.start, out);   // a loop wrap inside the block
+                    smart.transportJump (clock.wrapDelta (seg), g.start, out);
+                }
 
                 Transport segmentTransport = t;
                 segmentTransport.ppq = g.ppq;
                 injected.clear();
                 pattern.generate (s.enabled && s.testPattern, s.testShifter, segmentTransport, g.end - g.start, router,
-                                  injected, g.start);
+                                  injected, g.start, s.testSmart);
 
                 int j = 0, cursor = g.start, runs = 0;
                 while (true)
@@ -110,13 +132,13 @@ namespace chordism
 
                     int at = 0;
                     uint8_t order = 0;
-                    if (runs < maxQueueRunsPerSegment
-                        && performer.peek (cursor, next != nullptr ? nextSample + 1 : g.end, at, order)
-                        && (next == nullptr || at < nextSample || order < ChordPerformer::inputOrder))
+                    ChordPerformer* due = runs < maxQueueRunsPerSegment
+                                        ? peekNext (cursor, next != nullptr ? nextSample + 1 : g.end, at, order) : nullptr;
+                    if (due != nullptr && (next == nullptr || at < nextSample || order < ChordPerformer::inputOrder))
                     {
                         ++runs;
                         cursor = at;
-                        performer.runNext (out);
+                        due->runNext (out);
                         continue;
                     }
                     if (next == nullptr)
@@ -139,6 +161,7 @@ namespace chordism
         void releaseAll (int sample, BlockEvents& out) noexcept
         {
             performer.killAll (sample, out);
+            smart.killAll (sample, out);
             voices.releaseAll (sample, out);
             held = {};
             shifters.forgetHeld();            // a Standard shifter ends; a Toggle one stays on
@@ -155,6 +178,8 @@ namespace chordism
         int getLastChordSlot() const noexcept { return lastChordSlot; }
         int getPatternKey() const noexcept { return pattern.getHeldKey(); }
         const ChordPerformer& getPerformer() const noexcept { return performer; }
+        const ChordPerformer& getSmartPerformer() const noexcept { return smart; }
+        const PatternEngine& getPatternEngine() const noexcept { return patterns; }
         const Clock& getClock() const noexcept { return clock; }
         int getActiveShifter() const noexcept { return activeShifter; }
         bool editsApply() const noexcept { return editsLive; }
@@ -230,7 +255,53 @@ namespace chordism
                 *changedOut = changed;
 
             if (out != nullptr && any)
+            {
                 performer.retune (changed, sample, *out);
+                followChord (sample, *out);
+            }
+        }
+
+        // The chord the Smart Scale follows: the effective key and scale, and the chord slot
+        // played last (before any: the tonic, with no steps).
+        SmartChord smartChord() const noexcept
+        {
+            SmartChord c;
+            c.key = context.key;
+            c.scale = context.scale;
+            if (lastChordSlot >= 0 && lastChordSlot < numChordSlots)
+                c.slot = chords[(size_t) lastChordSlot];
+            return c;
+        }
+
+        // The Smart Scale zone follows the current chord: its patterns take it at their next step.
+        void followChord (int sample, BlockEvents& out) noexcept
+        {
+            const SmartChord c = smartChord();
+            if (c == patterns.getMapper().getChord())
+                return;
+            patterns.setChord (c);
+            smart.retuneAll (sample, out);
+        }
+
+        // The next queued event of either zone due before `limit` (the chord zone's first at a
+        // tie), or nullptr.
+        ChordPerformer* peekNext (int floor, int limit, int& at, uint8_t& order) noexcept
+        {
+            int a1 = 0, a2 = 0;
+            uint8_t o1 = 0, o2 = 0;
+            const bool c = performer.peek (floor, limit, a1, o1);
+            const bool z = smart.peek (floor, limit, a2, o2);
+            if (! c && ! z)
+                return nullptr;
+            if (c && (! z || a1 < a2 || (a1 == a2 && o1 <= o2)))
+            {
+                at = a1;
+                order = o1;
+                return &performer;
+            }
+            at = a2;
+            order = o2;
+            return &smart;
         }
 
         // Takes a new editor snapshot. Edits apply while their group is the Chord Group; once
@@ -259,6 +330,7 @@ namespace chordism
             const EngineSettings old = current;
             current = s;
             router.split = s.split;
+            router.chromatic = s.smart.map.mapping == Mapping::Chromatic;
 
             if (s.shifterMode != old.shifterMode)
                 shifters.reset();
@@ -269,13 +341,18 @@ namespace chordism
                 releaseAll (0, out);
                 refreshChords (0, nullptr);
                 performer.applySettings (s.fx, s.outputChannel, {}, 0, out);
+                patterns.update (s.smart, smartChord());
+                smart.applySettings (PatternEngine::fx (s.smart), s.outputChannel, {}, 0, out);
                 return;
             }
 
-            // Held chords follow parameter and edit changes, and the effects follow theirs.
+            // Held chords follow parameter and edit changes, and the effects follow theirs; the
+            // Smart Scale zone follows the chords and its own settings.
             std::array<bool, numChordSlots> changed {};
             refreshChords (0, nullptr, &changed);
             performer.applySettings (s.fx, s.outputChannel, changed, 0, out);
+            patterns.update (s.smart, smartChord());
+            smart.applySettings (PatternEngine::fx (s.smart), s.outputChannel, {}, 0, out);
 
             if (s.muteChords && ! old.muteChords)
                 releaseZone (Zone::Chord, out);
@@ -287,6 +364,8 @@ namespace chordism
         {
             if (z == Zone::Chord)
                 performer.killAll (0, out);
+            else
+                smart.killAll (0, out);
             for (int n = 0; n < 128; ++n)
                 if (held[(size_t) n].down && ! held[(size_t) n].passThrough && held[(size_t) n].routed.zone == z)
                     voices.release ((VoiceTracker::Source) n, 0, out);
@@ -294,12 +373,9 @@ namespace chordism
 
         void startKey (int n, const HeldKey& h, int sample, BlockEvents& out) noexcept
         {
-            const auto src = (VoiceTracker::Source) n;
-            const int ch = current.outputChannel;
-
             if (h.passThrough)
             {
-                voices.start (src, h.channel, n, h.velocity, sample, out);
+                voices.start ((VoiceTracker::Source) n, h.channel, n, h.velocity, sample, out);
                 return;
             }
 
@@ -311,13 +387,17 @@ namespace chordism
                         return;
                     lastChordSlot = h.routed.index;
                     performer.press (n, h.routed.index, h.velocity, sample, out);
+                    followChord (sample, out);
                     return;
                 }
                 case KeyRole::ScaleTone:
-                case KeyRole::PatternSlot:
                 case KeyRole::PassThrough:
                     if (! current.muteScale)
-                        voices.start (src, ch, n, h.velocity, sample, out);
+                        smart.press (n, h.routed.index, h.velocity, sample, out);
+                    return;
+                case KeyRole::PatternSlot:
+                    if (! current.muteScale)
+                        smart.press (n, PatternEngine::slotForPattern (h.routed.index), h.velocity, sample, out);
                     return;
                 case KeyRole::Shifter:
                     return;
@@ -339,7 +419,8 @@ namespace chordism
                 auto& h = held[(size_t) n];
                 if (h.down)
                 {
-                    performer.end (n, sample, out);   // retrigger: a held chord key ends, even with Hold
+                    performer.end (n, sample, out);   // retrigger: a held key ends, even with Hold
+                    smart.end (n, sample, out);
                     keyUp (n, sample, out);
                 }
 
@@ -380,6 +461,8 @@ namespace chordism
             h.down = false;
             if (! h.passThrough && h.routed.role == KeyRole::ChordSlot)
                 performer.release (n, sample, out);   // ends, or is held (Hold)
+            else if (! h.passThrough && h.routed.zone == Zone::Scale)
+                smart.release (n, sample, out);
             else
                 voices.release ((VoiceTracker::Source) n, sample, out);
             if (! h.passThrough && h.routed.role == KeyRole::Shifter && shifters.release (n, current.shifterMode))
@@ -387,6 +470,7 @@ namespace chordism
         }
 
         static constexpr int maxQueueRunsPerSegment = 1 << 16;
+        static constexpr int smartFirstSource = ChordPerformer::firstSource + 2 * ChordPerformer::numPerformances;   // 384
 
         EngineSettings current;
         InputRouter router;
@@ -407,5 +491,7 @@ namespace chordism
         std::atomic<uint32_t> editsDiscarded { 0 };
         std::atomic<uint32_t> discardedVersion { 0 };
         ChordPerformer performer { voices, clock, chords, context };
+        PatternEngine patterns;
+        ChordPerformer smart { voices, clock, chords, context, patterns, smartFirstSource };
     };
 }

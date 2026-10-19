@@ -100,5 +100,28 @@ namespace chordism
             const int c = ((split - 12) / 12) * 12;
             return c + keys::blackOffsets[slot];
         }
+
+        // The first Smart Scale white key with letter `letter` (C = 0 … B = 6) at or above the
+        // split, or -1.
+        int scaleKeyForLetter (int letter) const noexcept
+        {
+            return letter < 0 || letter > 6 ? -1 : firstAtOrAbove (keys::whiteOffsets[letter]);
+        }
+
+        // The first Smart Scale black key of pattern `slot` (0..4) at or above the split, or -1.
+        int patternKeyForSlot (int slot) const noexcept
+        {
+            return slot < 0 || slot > 4 ? -1 : firstAtOrAbove (keys::blackOffsets[slot]);
+        }
+
+    private:
+        int firstAtOrAbove (int offset) const noexcept
+        {
+            const int s = split < 0 ? 0 : split;
+            int k = s - s % 12 + offset;
+            if (k < s)
+                k += 12;
+            return k <= 127 ? k : -1;
+        }
     };
 }

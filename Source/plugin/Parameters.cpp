@@ -67,7 +67,7 @@ namespace chordism::params
             return a;
         }
 
-        std::unique_ptr<juce::AudioParameterFloat> percent (const char* pid, const juce::String& name, float initial)
+        std::unique_ptr<juce::AudioParameterFloat> percent (const juce::String& pid, const juce::String& name, float initial)
         {
             return std::make_unique<juce::AudioParameterFloat> (
                 id (pid), name, juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), initial,
@@ -81,6 +81,40 @@ namespace chordism::params
     juce::String shifterKey (int slot)   { return numbered ("shifter", slot, "Key"); }
     juce::String shifterScale (int slot) { return numbered ("shifter", slot, "Scale"); }
     juce::String seqStep (int pattern, int step) { return "seq" + juce::String (pattern + 1) + "Step" + juce::String (step + 1); }
+    juce::String seqSteps (int pattern)      { return "seq" + juce::String (pattern + 1) + "Steps"; }
+    juce::String smartSeqSteps (int pattern) { return "smartSeq" + juce::String (pattern + 1) + "Steps"; }
+    juce::String patternArp (int slot)   { return numbered ("pattern", slot, "Arp"); }
+    juce::String patternRate (int slot)  { return numbered ("pattern", slot, "Rate"); }
+    juce::String patternRange (int slot) { return numbered ("pattern", slot, "Range"); }
+    juce::String patternChord (int slot) { return numbered ("pattern", slot, "Chord"); }
+    juce::String patternGate (int slot)  { return numbered ("pattern", slot, "Gate"); }
+
+    juce::String stepsText (int mask)
+    {
+        juce::String t;
+        for (int s = 0; s < numSeqSteps; ++s)
+            t << (((mask >> s) & 1) != 0 ? "x" : ".");
+        return t;
+    }
+
+    int stepsFromText (const juce::String& text)
+    {
+        const auto t = text.trim();
+        if (t.containsOnly ("xX.-_o0 ") && t.containsAnyOf ("xX.-_"))
+        {
+            int mask = 0, s = 0;
+            for (auto c : t)
+            {
+                if (c == ' ')
+                    continue;
+                if (s < numSeqSteps && (c == 'x' || c == 'X'))
+                    mask |= 1 << s;
+                ++s;
+            }
+            return mask;
+        }
+        return juce::jlimit (0, 0xffff, t.getIntValue());
+    }
 
     juce::String liveNoteName (int note)
     {
@@ -166,12 +200,65 @@ namespace chordism::params
         layout.add (std::make_unique<AudioParameterChoice> (id (hold), "Hold",
                                                             names (numHoldModes, [] (int i) { return holdModeName ((HoldMode) i); }), 0));
 
-        // The four sequencer patterns, 16 steps each, starting as the factory patterns.
+        // The four sequencer patterns, 16 steps each as a mask (bit s = step s + 1), starting as
+        // the factory patterns. (Phase 3's 64 step bools; replaced in Phase 4, see Parameters.h.)
+        auto stepsParam = [] (const String& pid, const String& name, int initial)
+        {
+            return std::make_unique<AudioParameterInt> (
+                id (pid), name, 0, 0xffff, initial,
+                AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return stepsText (v); })
+                                             .withValueFromStringFunction ([] (const String& t) { return stepsFromText (t); }));
+        };
         const auto patterns = defaultSeqPatterns();
         for (int p = 0; p < numSeqPatterns; ++p)
-            for (int s = 0; s < numSeqSteps; ++s)
-                layout.add (std::make_unique<AudioParameterBool> (id (seqStep (p, s)), "Seq " + String (p + 1) + " step " + String (s + 1),
-                                                                  ((patterns[(size_t) p] >> s) & 1) != 0));
+            layout.add (stepsParam (seqSteps (p), "Seq " + String (p + 1) + " steps", patterns[(size_t) p]));
+
+        // Phase 4: the Smart Scale zone (Source/core/engine/ScaleMapper.h, PatternEngine.h).
+        // Appended, never reordered; choice lists come from the engine's enums.
+        const SmartSettings ss;
+        const StringArray slotNames { "1", "2", "3", "4", "5" };
+        layout.add (std::make_unique<AudioParameterChoice> (id (mapping), "Mapping",
+                                                            names (numMappings, [] (int i) { return mappingName ((Mapping) i); }),
+                                                            (int) ss.map.mapping));
+        layout.add (std::make_unique<AudioParameterBool> (id (inversions), "Inversions", ss.map.inversions));
+        layout.add (std::make_unique<AudioParameterBool> (id (noteRepeat), "Note repeat", ss.noteRepeat));
+        layout.add (std::make_unique<AudioParameterChoice> (id (patternSlot), "Pattern slot", slotNames, ss.patternSlot));
+        layout.add (std::make_unique<AudioParameterInt> (id (smartOctave), "SS octave", -3, 3, ss.map.octave));
+        layout.add (std::make_unique<AudioParameterChoice> (id (smartStack), "SS stack",
+                                                            names (numStackModes, [] (int i) { return stackModeName ((StackMode) i); }), 0));
+        layout.add (std::make_unique<AudioParameterBool> (id (smartSeq), "SS step seq", false));
+        layout.add (std::make_unique<AudioParameterChoice> (id (smartSeqPattern), "SS seq pattern", StringArray { "1", "2", "3", "4" }, 0));
+        layout.add (percent (smartSeqSwing, "SS seq swing", 0.0f));
+        layout.add (percent (smartSeqGate, "SS seq gate", (float) (ss.seq.gate * 100.0)));
+        layout.add (std::make_unique<AudioParameterBool> (id (smartSeqSustain), "SS seq sustain", false));
+        layout.add (std::make_unique<AudioParameterChoice> (id (smartVelocity), "SS velocity",
+                                                            names (numVelocityCurves, [] (int i) { return velocityCurveName ((VelocityCurve) i); }), 0));
+        layout.add (std::make_unique<AudioParameterInt> (id (smartVelocityPeak), "SS velocity peak", 1, 127, ss.velocity.peak));
+        layout.add (percent (smartVelocityRange, "SS velocity range", (float) (ss.velocity.range * 100.0)));
+        layout.add (std::make_unique<AudioParameterChoice> (id (smartHold), "SS hold",
+                                                            names (numHoldModes, [] (int i) { return holdModeName ((HoldMode) i); }), 0));
+        for (int p = 0; p < numSeqPatterns; ++p)
+            layout.add (stepsParam (smartSeqSteps (p), "SS seq " + String (p + 1) + " steps", ss.seq.patterns[(size_t) p]));
+
+        // The five pattern slots. The arp list has no Off: a pattern key always plays.
+        for (int n = 0; n < numPatternSlots; ++n)
+        {
+            const auto& slot = ss.patterns[(size_t) n];
+            const String name = "Pattern " + String (n + 1);
+            layout.add (std::make_unique<AudioParameterChoice> (id (patternArp (n)), name + " arp",
+                                                                names (numArpPatterns - 1, [] (int i) { return arpPatternName ((ArpPattern) (i + 1)); }),
+                                                                (int) slot.pattern - 1));
+            layout.add (std::make_unique<AudioParameterChoice> (id (patternRate (n)), name + " rate", names (numPatternRates, patternRateName), slot.rate));
+            layout.add (std::make_unique<AudioParameterInt> (id (patternRange (n)), name + " range", minArpRange, maxArpRange, slot.range));
+            layout.add (std::make_unique<AudioParameterChoice> (id (patternChord (n)), name + " chord",
+                                                                names (numArpChords, [] (int i) { return arpChordName ((ArpChord) i); }),
+                                                                (int) slot.chord));
+            layout.add (percent (patternGate (n), name + " gate", (float) (slot.gate * 100.0)));
+        }
+
+        // Test smart: the test pattern also plays the Smart Scale zone (TestPattern.h).
+        layout.add (std::make_unique<AudioParameterChoice> (id (testSmart), "Test smart",
+                                                            StringArray { "Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5" }, 0));
         return layout;
     }
 
@@ -210,7 +297,23 @@ namespace chordism::params
           fxVelocity (state.getRawParameterValue (params::velocity)),
           fxVelocityPeak (state.getRawParameterValue (params::velocityPeak)),
           fxVelocityRange (state.getRawParameterValue (params::velocityRange)),
-          fxHold (state.getRawParameterValue (params::hold))
+          fxHold (state.getRawParameterValue (params::hold)),
+          ssMapping (state.getRawParameterValue (params::mapping)),
+          ssInversions (state.getRawParameterValue (params::inversions)),
+          ssNoteRepeat (state.getRawParameterValue (params::noteRepeat)),
+          ssPatternSlot (state.getRawParameterValue (params::patternSlot)),
+          ssOctave (state.getRawParameterValue (params::smartOctave)),
+          ssStack (state.getRawParameterValue (params::smartStack)),
+          ssSeq (state.getRawParameterValue (params::smartSeq)),
+          ssSeqPattern (state.getRawParameterValue (params::smartSeqPattern)),
+          ssSeqSwing (state.getRawParameterValue (params::smartSeqSwing)),
+          ssSeqGate (state.getRawParameterValue (params::smartSeqGate)),
+          ssSeqSustain (state.getRawParameterValue (params::smartSeqSustain)),
+          ssVelocity (state.getRawParameterValue (params::smartVelocity)),
+          ssVelocityPeak (state.getRawParameterValue (params::smartVelocityPeak)),
+          ssVelocityRange (state.getRawParameterValue (params::smartVelocityRange)),
+          ssHold (state.getRawParameterValue (params::smartHold)),
+          ssTest (state.getRawParameterValue (params::testSmart))
     {
         jassert (enable && key && scale && group && split && chordOctave && muteChords && muteScale
                  && testPattern && port && portCompensate && portTrimMs && progression && shifterMode && testShifter);
@@ -233,11 +336,23 @@ namespace chordism::params
                  && fxRepeatRate && fxRepeatGate && fxSeq && fxSeqPattern && fxSeqSwing && fxSeqGate && fxSeqSustain && fxVelocity
                  && fxVelocityPeak && fxVelocityRange && fxHold);
         for (int p = 0; p < numSeqPatterns; ++p)
-            for (int s = 0; s < numSeqSteps; ++s)
-            {
-                fxSeqSteps[(size_t) p][(size_t) s] = state.getRawParameterValue (params::seqStep (p, s));
-                jassert (fxSeqSteps[(size_t) p][(size_t) s] != nullptr);
-            }
+        {
+            fxSeqSteps[(size_t) p] = state.getRawParameterValue (params::seqSteps (p));
+            ssSeqSteps[(size_t) p] = state.getRawParameterValue (params::smartSeqSteps (p));
+            jassert (fxSeqSteps[(size_t) p] != nullptr && ssSeqSteps[(size_t) p] != nullptr);
+        }
+
+        jassert (ssMapping && ssInversions && ssNoteRepeat && ssPatternSlot && ssOctave && ssStack && ssSeq && ssSeqPattern
+                 && ssSeqSwing && ssSeqGate && ssSeqSustain && ssVelocity && ssVelocityPeak && ssVelocityRange && ssHold && ssTest);
+        for (int n = 0; n < numPatternSlots; ++n)
+        {
+            patArp[(size_t) n] = state.getRawParameterValue (params::patternArp (n));
+            patRate[(size_t) n] = state.getRawParameterValue (params::patternRate (n));
+            patRange[(size_t) n] = state.getRawParameterValue (params::patternRange (n));
+            patChord[(size_t) n] = state.getRawParameterValue (params::patternChord (n));
+            patGate[(size_t) n] = state.getRawParameterValue (params::patternGate (n));
+            jassert (patArp[(size_t) n] && patRate[(size_t) n] && patRange[(size_t) n] && patChord[(size_t) n] && patGate[(size_t) n]);
+        }
     }
 
     ChordFxSettings Snapshot::chordFx() const noexcept
@@ -260,18 +375,44 @@ namespace chordism::params
         fx.seq.gate = fraction (fxSeqGate);
         fx.seq.sustain = on (fxSeqSustain);
         for (int p = 0; p < numSeqPatterns; ++p)
-        {
-            uint16_t bits = 0;
-            for (int s = 0; s < numSeqSteps; ++s)
-                if (on (fxSeqSteps[(size_t) p][(size_t) s]))
-                    bits = (uint16_t) (bits | (1u << s));
-            fx.seq.patterns[(size_t) p] = bits;
-        }
+            fx.seq.patterns[(size_t) p] = (uint16_t) juce::jlimit (0, 0xffff, whole (fxSeqSteps[(size_t) p]));
         fx.velocity.curve = (VelocityCurve) choice (fxVelocity, numVelocityCurves);
         fx.velocity.peak = juce::jlimit (1, 127, whole (fxVelocityPeak));
         fx.velocity.range = fraction (fxVelocityRange);
         fx.hold = (HoldMode) choice (fxHold, numHoldModes);
         return fx;
+    }
+
+    SmartSettings Snapshot::smart() const noexcept
+    {
+        SmartSettings s;
+        s.map.mapping = (Mapping) choice (ssMapping, numMappings);
+        s.map.inversions = on (ssInversions);
+        s.map.octave = juce::jlimit (-3, 3, whole (ssOctave));
+        s.noteRepeat = on (ssNoteRepeat);
+        s.patternSlot = choice (ssPatternSlot, numPatternSlots);
+        s.stack = (StackMode) choice (ssStack, numStackModes);
+        s.seq.on = on (ssSeq);
+        s.seq.pattern = choice (ssSeqPattern, numSeqPatterns);
+        s.seq.swing = fraction (ssSeqSwing);
+        s.seq.gate = fraction (ssSeqGate);
+        s.seq.sustain = on (ssSeqSustain);
+        for (int p = 0; p < numSeqPatterns; ++p)
+            s.seq.patterns[(size_t) p] = (uint16_t) juce::jlimit (0, 0xffff, whole (ssSeqSteps[(size_t) p]));
+        s.velocity.curve = (VelocityCurve) choice (ssVelocity, numVelocityCurves);
+        s.velocity.peak = juce::jlimit (1, 127, whole (ssVelocityPeak));
+        s.velocity.range = fraction (ssVelocityRange);
+        s.hold = (HoldMode) choice (ssHold, numHoldModes);
+        for (int n = 0; n < numPatternSlots; ++n)
+        {
+            auto& slot = s.patterns[(size_t) n];
+            slot.pattern = (ArpPattern) (choice (patArp[(size_t) n], numArpPatterns - 1) + 1);
+            slot.rate = choice (patRate[(size_t) n], numPatternRates);
+            slot.range = juce::jlimit (minArpRange, maxArpRange, whole (patRange[(size_t) n]));
+            slot.chord = (ArpChord) choice (patChord[(size_t) n], numArpChords);
+            slot.gate = fraction (patGate[(size_t) n]);
+        }
+        return s;
     }
 
     ChordGroup Snapshot::chordGroup() const noexcept
@@ -311,6 +452,8 @@ namespace chordism::params
         }
         s.testShifter = juce::jlimit (0, numShifters, whole (testShifter)) - 1;
         s.fx = chordFx();
+        s.smart = smart();
+        s.testSmart = choice (ssTest, TestPattern::numSmartTests);
         return s;
     }
 }

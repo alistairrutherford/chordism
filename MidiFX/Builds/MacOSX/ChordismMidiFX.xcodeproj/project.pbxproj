@@ -108,6 +108,7 @@
 		628379210DDEC34D2793BE11 /* ChordismProcessor.cpp */ /* ChordismProcessor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ChordismProcessor.cpp; path = ../../../Source/plugin/ChordismProcessor.cpp; sourceTree = SOURCE_ROOT; };
 		6A52103517DFEC04A21CC8F6 /* ChordNamer.h */ /* ChordNamer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ChordNamer.h; path = ../../../Source/core/theory/ChordNamer.h; sourceTree = SOURCE_ROOT; };
 		6C96359BA25878D9250F7C66 /* juce_audio_devices */ /* juce_audio_devices */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_audio_devices; path = /Users/alistairrutherford/Development/JUCE/modules/juce_audio_devices; sourceTree = "<absolute>"; };
+		780328298C8C13BA5E4ABF3B /* PatternEngine.h */ /* PatternEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PatternEngine.h; path = ../../../Source/core/engine/PatternEngine.h; sourceTree = SOURCE_ROOT; };
 		7A9942C2FBA5D217E0E8D50C /* ChordEditorState.h */ /* ChordEditorState.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ChordEditorState.h; path = ../../../Source/plugin/ChordEditorState.h; sourceTree = SOURCE_ROOT; };
 		7BCA98810A38DCA2FA2A52D3 /* include_juce_audio_processors_headless.mm */ /* include_juce_audio_processors_headless.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_processors_headless.mm; path = ../../JuceLibraryCode/include_juce_audio_processors_headless.mm; sourceTree = SOURCE_ROOT; };
 		7C76182B7CC8D50D868CFE36 /* ChordismEngine.h */ /* ChordismEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ChordismEngine.h; path = ../../../Source/core/engine/ChordismEngine.h; sourceTree = SOURCE_ROOT; };
@@ -146,6 +147,7 @@
 		C20334D54020BB2B29496890 /* Hold.h */ /* Hold.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Hold.h; path = ../../../Source/core/engine/Hold.h; sourceTree = SOURCE_ROOT; };
 		C2A2854A959E76DE30173C1E /* include_juce_graphics.mm */ /* include_juce_graphics.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_graphics.mm; path = ../../JuceLibraryCode/include_juce_graphics.mm; sourceTree = SOURCE_ROOT; };
 		C3B22A771B34C6D6A041C033 /* Shared Code */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libChordismMidiFX.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6A0B0DA39125B6A7200DBFE /* ScaleMapper.h */ /* ScaleMapper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ScaleMapper.h; path = ../../../Source/core/engine/ScaleMapper.h; sourceTree = SOURCE_ROOT; };
 		CA527FDEAE4636C35051DEF7 /* juce_data_structures */ /* juce_data_structures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_data_structures; path = /Users/alistairrutherford/Development/JUCE/modules/juce_data_structures; sourceTree = "<absolute>"; };
 		CC7F9805DD34A9A50FB175AF /* QuartzCore.framework */ /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		D2E8E713020E790849A59410 /* include_juce_audio_utils.mm */ /* include_juce_audio_utils.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_utils.mm; path = ../../JuceLibraryCode/include_juce_audio_utils.mm; sourceTree = SOURCE_ROOT; };
@@ -218,6 +220,8 @@
 				F994DE6C06CA16A32EFF75FD,
 				C20334D54020BB2B29496890,
 				89648E27B52B7261DDBB2549,
+				C6A0B0DA39125B6A7200DBFE,
+				780328298C8C13BA5E4ABF3B,
 			);
 			name = core/engine;
 			sourceTree = "<group>";

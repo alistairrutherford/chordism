@@ -37,6 +37,7 @@ compile_and_run test_theory
 compile_and_run test_chords
 compile_and_run test_engine
 compile_and_run test_fx
+compile_and_run test_smart
 
 echo ""
 echo "All test binaries passed."

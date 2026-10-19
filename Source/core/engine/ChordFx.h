@@ -23,6 +23,12 @@
 // moves the note-offs and strum tones with the music (they keep their lengths) and puts each
 // pattern's next step on the grid at the new position.
 //
+// The Smart Scale zone runs a second ChordPerformer (PatternEngine.h) on the same clock: its
+// tones and each key's pattern come from a PerformerVoicing instead of the chord set, its
+// patterns stack each step after the pattern (Smart chain: Pattern → Octave → Stack), its
+// strikes keep sounding through a chord change (the next strike takes the new tones), and its
+// performances own the VoiceTracker sources from `sourceBase` on.
+//
 // Plain C++, no JUCE, no allocation.
 #pragma once
 
@@ -61,6 +67,29 @@ namespace chordism
         HoldMode hold = HoldMode::Off;
     };
 
+    // The arp a performance runs: the chord zone's Arp settings, or a Smart Scale pattern slot's.
+    struct ArpSettings
+    {
+        ArpPattern pattern = ArpPattern::Off;
+        int rate = 5;                     // index into the pattern rates
+        int range = 1;                    // octaves, 1..3
+        double gate = 0.5;                // 0..1
+    };
+
+    // Where a performer's tones come from when it isn't the chord zone's (the Smart Scale zone,
+    // PatternEngine.h). Called on the audio thread: no allocation, no locks.
+    class PerformerVoicing
+    {
+    public:
+        virtual ~PerformerVoicing() = default;
+
+        // The tones key `key` plays (ascending, each pitch once); `slot` is what it was pressed as.
+        virtual VoicedNotes tones (int key, int slot) const noexcept = 0;
+
+        // The pattern it runs: an arp, or pattern Off to strike its tones.
+        virtual ArpSettings arp (int key, int slot) const noexcept = 0;
+    };
+
     class ChordPerformer
     {
     public:
@@ -79,6 +108,22 @@ namespace chordism
 
         ChordPerformer (VoiceTracker& v, Clock& c, const ChordSet& chordSet, const ChordContext& ctx) noexcept
             : voices (v), clock (c), chords (chordSet), context (ctx) {}
+
+        // A performer whose tones and patterns come from `voicing` (the Smart Scale zone), with
+        // the sources sourceBase + 2k and sourceBase + 2k + 1 for key k. `chordSet` and `ctx`
+        // aren't used.
+        ChordPerformer (VoiceTracker& v, Clock& c, const ChordSet& chordSet, const ChordContext& ctx,
+                        const PerformerVoicing& voicingIn, int sourceBaseIn) noexcept
+            : voices (v), clock (c), chords (chordSet), context (ctx), voicing (&voicingIn), sourceBase (sourceBaseIn) {}
+
+        // The other zone's performer on the same clock: a stopped clock is only re-anchored on
+        // a key press when neither has anything playing.
+        void setSibling (const ChordPerformer* other) noexcept { sibling = other; }
+
+        VoiceTracker::Source source (int key, int which) const noexcept
+        {
+            return (VoiceTracker::Source) (sourceBase + 2 * key + (which & 1));
+        }
 
         // Forgets every performance without sending anything (the voices were released or
         // cleared already), and reseeds Random strum.
@@ -111,26 +156,43 @@ namespace chordism
             if (old.hold != HoldMode::Off && s.hold == HoldMode::Off)
                 endLatched (sample, -1);
 
-            const bool restart = (old.arp == ArpPattern::Off) != (s.arp == ArpPattern::Off)
-                              || old.repeat.on != s.repeat.on || old.seq.on != s.seq.on;
-            if (restart)
+            // Turning a pattern kind on or off restarts a performance; other arp settings
+            // (rate, range, gate, pattern) take effect at its next step.
+            const bool restartAll = (voicing == nullptr && (old.arp == ArpPattern::Off) != (s.arp == ArpPattern::Off))
+                                 || old.repeat.on != s.repeat.on || old.seq.on != s.seq.on;
+            std::array<bool, numPerformances> restart {};
+            bool anyRestart = false;
+            for (int k = 0; k < numPerformances; ++k)
+            {
+                Perf& p = perfs[(size_t) k];
+                if (! p.alive)
+                    continue;
+                p.arp = arpOf (k, p.slot);
+                restart[(size_t) k] = restartAll || p.arpMode != (p.arp.pattern != ArpPattern::Off);
+                anyRestart |= restart[(size_t) k];
+            }
+            if (anyRestart)
             {
                 for (int k = 0; k < numPerformances; ++k)
-                    if (perfs[(size_t) k].alive)
+                    if (restart[(size_t) k])
                         stopPattern (k, sample);
                 for (int k = 0; k < numPerformances; ++k)
-                    if (perfs[(size_t) k].alive)
+                    if (restart[(size_t) k])
                     {
-                        perfs[(size_t) k].notes = voiced (perfs[(size_t) k].slot);
+                        perfs[(size_t) k].notes = voiced (k, perfs[(size_t) k].slot);
                         startPattern (k, sample, true);
                     }
-                return;
+                if (restartAll)
+                    return;
             }
 
             std::array<bool, numChordSlots> slots = changed;
             if (old.stack != s.stack)
                 slots.fill (true);
-            retune (slots, sample, o);
+            retuneWhere ([&] (int k, const Perf& p) noexcept
+            {
+                return ! restart[(size_t) k] && (voicing != nullptr || (p.slot >= 0 && p.slot < numChordSlots && slots[(size_t) p.slot]));
+            }, sample);
         }
 
         // The transport started (stopped → playing): Random strum starts from its seed again.
@@ -165,7 +227,7 @@ namespace chordism
                 if (! p.alive)
                     continue;
                 if (p.arpMode)
-                    pushAt (grid::atOrAfter (from, patternRatePpq (fx.arpRate)), ArpStep, startOrder, k, p.gen, 0);
+                    pushAt (grid::atOrAfter (from, patternRatePpq (p.arp.rate)), ArpStep, startOrder, k, p.gen, 0);
                 else if (hasRhythm())
                     pushAt (nextStrikeFrom (now, from), NextStrike, startOrder, k, p.gen, 0);
             }
@@ -186,7 +248,7 @@ namespace chordism
             if (stopped && wasLatched)
                 return;                             // stopped: pressing a held chord's key ends it
 
-            if (stopped && alive == 0)
+            if (stopped && alive == 0 && (sibling == nullptr || sibling->aliveCount() == 0))
                 clock.anchor (sample);              // patterns start on a bar of their own
 
             Perf& p = perfs[(size_t) key];
@@ -195,7 +257,7 @@ namespace chordism
             p.latched = false;
             p.slot = slot;
             p.velocity = (uint8_t) (velocity < 1 ? 1 : (velocity > 127 ? 127 : velocity));
-            p.notes = voiced (slot);
+            p.notes = voiced (key, slot);
             ++alive;
             startPattern (key, sample, true);
         }
@@ -239,31 +301,22 @@ namespace chordism
         // The chords changed (parameters, edits, a shifter): every performance whose slot is
         // marked and whose tones changed plays the new tones. A sounding strike is restruck at
         // `sample` (all releases first, so a shared pitch restrikes); an arp takes the new tones
-        // at its next step.
+        // at its next step. With a voicing (the Smart Scale zone) every performance is checked,
+        // and a sounding strike keeps its notes: the next strike plays the new tones.
         void retune (const std::array<bool, numChordSlots>& changed, int sample, BlockEvents& o) noexcept
         {
             out = &o;
-            if (alive == 0)
-                return;
-            std::array<bool, numPerformances> restrike {};
-            for (int k = 0; k < numPerformances; ++k)
+            retuneWhere ([&] (int, const Perf& p) noexcept
             {
-                Perf& p = perfs[(size_t) k];
-                if (! p.alive || p.slot < 0 || p.slot >= numChordSlots || ! changed[(size_t) p.slot])
-                    continue;
-                const VoicedNotes next = voiced (p.slot);
-                if (next == p.notes)
-                    continue;
-                p.notes = next;
-                if (! p.arpMode && p.strikeOpen)
-                {
-                    voices.release (sourceOf (k, p.src), sample, *out);
-                    restrike[(size_t) k] = true;
-                }
-            }
-            for (int k = 0; k < numPerformances; ++k)
-                if (restrike[(size_t) k])
-                    strum (k, sample);
+                return voicing != nullptr || (p.slot >= 0 && p.slot < numChordSlots && changed[(size_t) p.slot]);
+            }, sample);
+        }
+
+        // Every performance takes its tones again (the Smart Scale zone's chord or mapping changed).
+        void retuneAll (int sample, BlockEvents& o) noexcept
+        {
+            out = &o;
+            retuneWhere ([] (int, const Perf&) noexcept { return true; }, sample);
         }
 
         // The next queued event due in the current segment before block sample `limit` (and at
@@ -336,6 +389,7 @@ namespace chordism
             int slot = 0;
             uint8_t velocity = 100;
             VoicedNotes notes;
+            ArpSettings arp;              // the pattern's arp (pattern Off: strikes)
 
             uint8_t src = 0;              // which of the two sources the current strike / step uses
             bool strikeOpen = false;
@@ -357,11 +411,46 @@ namespace chordism
         bool hasRhythm() const noexcept { return fx.repeat.on || fx.seq.on; }
         StepGrid stepGrid() const noexcept { return StepGrid (fx.seq, clock.barOrigin(), clock.barLength()); }
 
-        VoicedNotes voiced (int slot) const noexcept
+        VoicedNotes voiced (int key, int slot) const noexcept
         {
+            if (voicing != nullptr)
+                return voicing->tones (key, slot);
             if (slot < 0 || slot >= numChordSlots)
                 return {};
             return stackNotes (chordNotes (chords[(size_t) slot], context), fx.stack);
+        }
+
+        ArpSettings arpOf (int key, int slot) const noexcept
+        {
+            if (voicing != nullptr)
+                return voicing->arp (key, slot);
+            return { fx.arp, fx.arpRate, fx.arpRange, fx.arpGate };
+        }
+
+        template <class Pred>
+        void retuneWhere (Pred marked, int sample) noexcept
+        {
+            if (alive == 0)
+                return;
+            std::array<bool, numPerformances> restrike {};
+            for (int k = 0; k < numPerformances; ++k)
+            {
+                Perf& p = perfs[(size_t) k];
+                if (! p.alive || ! marked (k, (const Perf&) p))
+                    continue;
+                const VoicedNotes next = voiced (k, p.slot);
+                if (next == p.notes)
+                    continue;
+                p.notes = next;
+                if (voicing == nullptr && ! p.arpMode && p.strikeOpen)
+                {
+                    voices.release (source (k, p.src), sample, *out);
+                    restrike[(size_t) k] = true;
+                }
+            }
+            for (int k = 0; k < numPerformances; ++k)
+                if (restrike[(size_t) k])
+                    strum (k, sample);
         }
 
         // The velocity for a note-on at `sample`. The bar position is read half a sample on, so
@@ -394,7 +483,8 @@ namespace chordism
         void startPattern (int key, int sample, bool press) noexcept
         {
             Perf& p = perfs[(size_t) key];
-            p.arpMode = fx.arp != ArpPattern::Off;
+            p.arp = arpOf (key, p.slot);
+            p.arpMode = p.arp.pattern != ArpPattern::Off;
             if (p.arpMode)
             {
                 p.arpStepIndex = 0;
@@ -419,8 +509,8 @@ namespace chordism
         void endPerformance (int key, int sample) noexcept
         {
             Perf& p = perfs[(size_t) key];
-            voices.release (sourceOf (key, 0), sample, *out);
-            voices.release (sourceOf (key, 1), sample, *out);
+            voices.release (source (key, 0), sample, *out);
+            voices.release (source (key, 1), sample, *out);
             forget (p);
             queue.removeIf ([key] (const TimedEvent& e) noexcept { return e.owner == key; });
             --alive;
@@ -521,7 +611,7 @@ namespace chordism
             {
                 const int vel = velocityAt (p, sample);
                 for (const auto note : p.notes)
-                    voices.start (sourceOf (key, p.src), outChannel, note, vel, sample, *out);
+                    voices.start (source (key, p.src), outChannel, note, vel, sample, *out);
                 return;
             }
 
@@ -543,7 +633,7 @@ namespace chordism
                 return;
             const int i = p.order[(size_t) p.strumNext++];
             if (i < p.notes.size)
-                voices.start (sourceOf (key, p.src), outChannel, p.notes[i], velocityAt (p, sample), sample, *out);
+                voices.start (source (key, p.src), outChannel, p.notes[i], velocityAt (p, sample), sample, *out);
 
             if (p.strumNext >= p.strumCount)
                 return;
@@ -560,7 +650,7 @@ namespace chordism
             Perf& p = perfs[(size_t) key];
             if (! p.strikeOpen)
                 return;
-            voices.release (sourceOf (key, p.src), sample, *out);
+            voices.release (source (key, p.src), sample, *out);
             p.strikeOpen = false;
             ++p.strumGen;
             drop (key, StrumNote);
@@ -580,9 +670,9 @@ namespace chordism
             Perf& p = perfs[(size_t) key];
             closeArpNote (key, sample);
 
-            const double step = patternRatePpq (fx.arpRate);
+            const double step = patternRatePpq (p.arp.rate);
             const double next = press ? grid::afterPress (T, step) : grid::after (T, step);
-            double endPpq = T + grid::clampGate (fx.arpGate) * (next - T);
+            double endPpq = T + grid::clampGate (p.arp.gate) * (next - T);
             bool sound = true;
             if (fx.seq.on)
             {
@@ -591,13 +681,24 @@ namespace chordism
                 endPpq = w.valid && w.end < endPpq ? w.end : endPpq;
             }
 
-            const VoicedNotes tones = arpTones (p.notes, fx.arpRange);
-            const int i = arpIndex (fx.arp, tones.size, p.arpStepIndex++);
+            const VoicedNotes tones = arpTones (p.notes, p.arp.range);
+            const int i = arpIndex (p.arp.pattern, tones.size, p.arpStepIndex++);
             if (sound && i >= 0 && endPpq > T)
             {
                 p.src ^= 1;
                 ++p.arpNoteSeq;
-                voices.start (sourceOf (key, p.src), outChannel, tones[i], velocityAt (p, sample), sample, *out);
+                const int vel = velocityAt (p, sample);
+                voices.start (source (key, p.src), outChannel, tones[i], vel, sample, *out);
+                if (voicing != nullptr)
+                {
+                    // The Smart Scale zone stacks after the pattern: each step with its octaves.
+                    const bool one = fx.stack == StackMode::PlusOne || fx.stack == StackMode::PlusOneAndTwo;
+                    const bool two = fx.stack == StackMode::PlusTwo || fx.stack == StackMode::PlusOneAndTwo;
+                    if (one && tones[i] + 12 < 128)
+                        voices.start (source (key, p.src), outChannel, tones[i] + 12, vel, sample, *out);
+                    if (two && tones[i] + 24 < 128)
+                        voices.start (source (key, p.src), outChannel, tones[i] + 24, vel, sample, *out);
+                }
                 p.arpNoteOpen = true;
                 pushAt (endPpq, ArpNoteEnd, endOrder, key, p.gen, p.arpNoteSeq);
             }
@@ -609,7 +710,7 @@ namespace chordism
             Perf& p = perfs[(size_t) key];
             if (! p.arpNoteOpen)
                 return;
-            voices.release (sourceOf (key, p.src), sample, *out);
+            voices.release (source (key, p.src), sample, *out);
             p.arpNoteOpen = false;
             drop (key, ArpNoteEnd);
         }
@@ -618,6 +719,9 @@ namespace chordism
         Clock& clock;
         const ChordSet& chords;
         const ChordContext& context;
+        const PerformerVoicing* voicing = nullptr;
+        int sourceBase = firstSource;
+        const ChordPerformer* sibling = nullptr;
 
         ChordFxSettings fx;
         int outChannel = 0;

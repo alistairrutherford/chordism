@@ -216,9 +216,11 @@ static void testChords()
     rig.run ({ MidiEvent::noteOff (0, 55, 0) });
     rig.settings = EngineSettings {};
 
-    // Split moves while a key is held: the key-up still releases what it started.
+    // Split moves while a key is held: the key-up still releases what it started. (Chromatic
+    // mapping: the Smart Scale zone passes its keys through, as it did before Phase 4.)
+    rig.settings.smart.map.mapping = Mapping::Chromatic;
     rig.run ({ MidiEvent::noteOn (0, 62, 90, 0) });
-    check (rig.engine.getVoices().ownerCount (0, 62) == 1, "62 above the split passes through (Phase 1 Smart Scale)");
+    check (rig.engine.getVoices().ownerCount (0, 62) == 1, "Chromatic: 62 above the split passes through");
     rig.settings.split = 64;
     rig.run ({});
     auto& splitOff = rig.run ({ MidiEvent::noteOff (0, 62, 0) });
@@ -226,7 +228,7 @@ static void testChords()
            "split moved over a held key: its key-up releases the pass-through note, not a chord");
     rig.settings.split = 60;
 
-    // Mutes.
+    // Mutes (still Chromatic).
     rig.run ({ MidiEvent::noteOn (0, 48, 90, 0), MidiEvent::noteOn (0, 64, 90, 0) });
     rig.settings.muteChords = true;
     auto& muted = rig.run ({});
@@ -688,6 +690,9 @@ static void testSnapshotExchange()
 // Phase 3: also every chord effect (Stack, Strum, Arp, Repeat, Step Sequencer, Velocity, Hold),
 // loops that wrap inside blocks, and time-signature changes; the scheduler's queue must stay
 // within its bound (4 events per performance).
+// Phase 4: also the Smart Scale zone: mappings, Inversions, Smart Octave, pattern keys and their
+// slot settings, Note Repeat, the zone's Stack, Step Sequencer, Velocity and Hold, and the
+// test pattern's Test smart (tones and held pattern keys), in both queue bounds.
 // `fx`: a run that keeps a timed effect on and the transport looping most of the time.
 static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
 {
@@ -700,6 +705,7 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
     std::set<std::pair<int, int>> keysDown;   // (channel, note) the "player" holds
     int maxSounding = 0;
     int fxBlocks = 0, wrapBlocks = 0;         // blocks with a timed effect playing, with a loop wrap inside
+    int smartBlocks = 0;                      // blocks with a Smart Scale performance
 
     for (int b = 0; b < blocks; ++b)
     {
@@ -821,7 +827,41 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
                 rig.transport.playing = true;
             if (fx.hold == HoldMode::Off && chance (0.1))
                 fx.hold = chance (0.5) ? HoldMode::Latch : HoldMode::Bar;   // keeps chords playing
+            if (! rig.settings.smart.noteRepeat && chance (0.05))
+                rig.settings.smart.noteRepeat = true;
+            if (rig.settings.smart.hold == HoldMode::Off && chance (0.1))
+                rig.settings.smart.hold = chance (0.5) ? HoldMode::Latch : HoldMode::Bar;   // keeps patterns playing
         }
+        // Phase 4: the Smart Scale zone while its keys and patterns are held.
+        auto& ss = rig.settings.smart;
+        if (chance (0.03)) ss.map.mapping = (Mapping) pick (0, numMappings - 1);
+        if (chance (0.02)) ss.map.inversions = ! ss.map.inversions;
+        if (chance (0.02)) ss.map.octave = pick (-3, 3);
+        if (chance (0.03)) ss.noteRepeat = ! ss.noteRepeat;
+        if (chance (0.02)) ss.patternSlot = pick (0, numPatternSlots - 1);
+        if (chance (0.04))
+        {
+            auto& slot = ss.patterns[(size_t) pick (0, numPatternSlots - 1)];
+            slot.pattern = (ArpPattern) pick (1, numArpPatterns - 1);
+            slot.rate = pick (0, numPatternRates - 1);
+            slot.range = pick (1, 3);
+            slot.chord = (ArpChord) pick (0, numArpChords - 1);
+            slot.gate = unit();
+        }
+        if (chance (0.03)) ss.stack = (StackMode) pick (0, numStackModes - 1);
+        if (chance (0.02)) ss.seq.on = ! ss.seq.on;
+        if (chance (0.03))
+        {
+            ss.seq.pattern = pick (0, numSeqPatterns - 1);
+            ss.seq.patterns[(size_t) pick (0, numSeqPatterns - 1)] = (uint16_t) pick (0, 0xffff);
+            ss.seq.swing = unit();
+            ss.seq.gate = unit();
+            ss.seq.sustain = chance (0.5);
+        }
+        if (chance (0.02)) ss.velocity = { (VelocityCurve) pick (0, numVelocityCurves - 1), pick (1, 127), unit() };
+        if (chance (0.02)) ss.hold = (HoldMode) pick (0, numHoldModes - 1);
+        if (chance (0.02)) rig.settings.testSmart = pick (0, TestPattern::numSmartTests - 1);
+
         if (chance (0.005))
         {
             const int sig = pick (0, 3);
@@ -833,10 +873,13 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
         const auto& perf = rig.engine.getPerformer();
         fxBlocks += perf.aliveCount() > 0 && (fx.arp != ArpPattern::Off || fx.strum != StrumMode::Off || fx.repeat.on || fx.seq.on) ? 1 : 0;
         wrapBlocks += rig.engine.getClock().numSegments() > 1 ? 1 : 0;
-        if (perf.queued() > 4 * perf.aliveCount())
+        const auto& smartPerf = rig.engine.getSmartPerformer();
+        smartBlocks += smartPerf.aliveCount() > 0 ? 1 : 0;
+        if (perf.queued() > 4 * perf.aliveCount() || smartPerf.queued() > 4 * smartPerf.aliveCount())
         {
             check (false, "fuzz seed " + std::to_string (seed) + ", block " + std::to_string (b) + ": " + std::to_string (perf.queued())
-                              + " events queued for " + std::to_string (perf.aliveCount()) + " performances");
+                              + " events queued for " + std::to_string (perf.aliveCount()) + " chord performances, "
+                              + std::to_string (smartPerf.queued()) + " for " + std::to_string (smartPerf.aliveCount()) + " Smart Scale");
             return;
         }
         maxSounding = std::max (maxSounding, (int) rig.rx.on.size());
@@ -856,6 +899,7 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
         ups.push_back (MidiEvent::noteOff (ch, note, 0));
     rig.run (ups, 64);
     rig.settings.fx.hold = HoldMode::Off;   // a hold made while stopped survives a stopped transport
+    rig.settings.smart.hold = HoldMode::Off;
     rig.run ({}, 64);
     rig.transport.playing = false;
     rig.run ({}, 64);
@@ -864,7 +908,8 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
 
     check (rig.rx.clean() && rig.rx.on.empty() && rig.engine.getVoices().isEmpty() && rig.rx.noteOns == rig.rx.noteOffs,
            "fuzz seed " + std::to_string (seed) + ", " + std::to_string (blocks) + " blocks (" + std::to_string (fxBlocks)
-               + " with timed effects, " + std::to_string (wrapBlocks) + " loop wraps; peak " + std::to_string (maxSounding)
+               + " with timed effects, " + std::to_string (smartBlocks) + " with Smart Scale performances, "
+               + std::to_string (wrapBlocks) + " loop wraps; peak " + std::to_string (maxSounding)
                + " notes): " + rig.rx.describe());
 }
 

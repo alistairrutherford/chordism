@@ -41,6 +41,8 @@
         <FILE id="csF035" name="VelocityAlgorithm.h" compile="0" resource="0" file="Source/core/engine/VelocityAlgorithm.h"/>
         <FILE id="csF036" name="Hold.h" compile="0" resource="0" file="Source/core/engine/Hold.h"/>
         <FILE id="csF037" name="ChordFx.h" compile="0" resource="0" file="Source/core/engine/ChordFx.h"/>
+        <FILE id="csF038" name="ScaleMapper.h" compile="0" resource="0" file="Source/core/engine/ScaleMapper.h"/>
+        <FILE id="csF039" name="PatternEngine.h" compile="0" resource="0" file="Source/core/engine/PatternEngine.h"/>
       </GROUP>
       <GROUP id="csGrp2" name="plugin">
         <FILE id="csF011" name="ChordismProcessor.h" compile="0" resource="0" file="Source/plugin/ChordismProcessor.h"/>
