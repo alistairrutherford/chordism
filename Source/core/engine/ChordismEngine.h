@@ -182,6 +182,11 @@ namespace chordism
         const PatternEngine& getPatternEngine() const noexcept { return patterns; }
         const Clock& getClock() const noexcept { return clock; }
         int getActiveShifter() const noexcept { return activeShifter; }
+
+        // For the editor: input key `note` is down; a performance of key `note` (chord, tone or
+        // pattern) is playing, held or not.
+        bool isKeyDown (int note) const noexcept { return note >= 0 && note < 128 && held[(size_t) note].down; }
+        bool isPerforming (int note) const noexcept { return performer.isAlive (note) || smart.isAlive (note); }
         bool editsApply() const noexcept { return editsLive; }
 
         // Edits the engine dropped because the Chord Group changed: the count, and the version

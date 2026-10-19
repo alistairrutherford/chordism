@@ -10,6 +10,7 @@
 #include "TestUtil.h"
 #include "core/engine/ChordismEngine.h"
 #include "core/theory/ChordNamer.h"
+#include "core/theory/ChordTypes.h"
 #include "core/theory/RomanNumeral.h"
 #include <algorithm>
 #include <sstream>
@@ -377,11 +378,57 @@ static void testRomanNumerals()
     check (row (Scale::Major, ChordGroup::Sevenths) == "I ii iii IV V vi vii*", "sevenths: the triad decides");
 }
 
+// The Active Chord menu's types (ChordTypes.h): on every degree of every scale, each type that
+// is offered gives a chord ChordNamer names with that type, on the slot's own root.
+static void testChordTypes()
+{
+    std::cout << "== chord types (Active Chord) ==\n";
+    int applied = 0, skipped = 0, bad = 0;
+    std::string first;
+    for (int s = 0; s < numScales; ++s)
+        for (int d = 0; d < 7; ++d)
+            for (auto g : { ChordGroup::Triads, ChordGroup::Thirteenths, ChordGroup::Sus4 })
+                for (int t = 0; t < numChordTypes; ++t)
+                {
+                    ChordSlot slot;
+                    if (! withChordType (makeGroupSlot (g, (Scale) s, d), (Scale) s, t, slot))
+                    {
+                        ++skipped;
+                        continue;
+                    }
+                    ++applied;
+                    const ChordContext ctx { 0, (Scale) s, 0 };
+                    const auto name = nameSlot (slot, ctx);
+                    if ((name.quality != chordType (t).quality || name.root != slotRootPc (slot, ctx) || name.bass != name.root) && bad++ == 0)
+                        first = std::string (" first: ") + scaleInfo ((Scale) s).name + " degree " + std::to_string (d + 1) + " "
+                              + chordType (t).name + " named " + name.text();
+                }
+    check (bad == 0, std::to_string (applied) + " chords of 27 types on 13 scales × 7 degrees × 3 starting groups named as their type ("
+                         + std::to_string (skipped) + " not offered)" + first);
+
+    bool everyDegree = true;
+    for (int d = 0; d < 7; ++d)
+        for (int t = 0; t < numChordTypes; ++t)
+        {
+            ChordSlot slot;
+            everyDegree &= withChordType (makeGroupSlot (ChordGroup::Triads, Scale::Major, d), Scale::Major, t, slot);
+        }
+    check (everyDegree, "in major, every type is offered on every degree");
+
+    ChordSlot v;
+    withChordType (makeGroupSlot (ChordGroup::Triads, Scale::Major, 4), Scale::Major, 24, v);   // G7#9
+    check (v.steps[4].on && v.steps[4].accidental == 1 && v.steps[3].accidental == 0 && ! v.steps[5].on && ! v.steps[6].on,
+           "7#9 on V: the 9th raised, the 7th natural, 11th and 13th off");
+    withChordType (makeGroupSlot (ChordGroup::Triads, Scale::Major, 0), Scale::Major, 4, v);    // Csus2
+    check (! v.steps[1].on && v.steps[4].on && v.steps[4].octaveMask == octaveBit (-1), "sus2: no 3rd, the 9th an octave down (a 2nd)");
+}
+
 int main()
 {
     testEditorModel();
     testReferenceSet();
     testNaming();
     testRomanNumerals();
+    testChordTypes();
     return testutil::finish ("test_chords");
 }

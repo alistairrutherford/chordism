@@ -19,6 +19,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include "../core/engine/SnapshotExchange.h"
 #include "../core/theory/ChordEditor.h"
+#include "../core/theory/ChordTypes.h"
 
 namespace chordism
 {
@@ -36,9 +37,15 @@ namespace chordism
         void setAccidental (ChordGroup group, Scale scale, int degree, int step, int accidental);
         void setOctave (ChordGroup group, Scale scale, int degree, int step, int octave, bool on);
         void resetDegree (int degree);
+
+        // The Active Chord menu: rewrites `degree`'s steps to chord type `type` (ChordTypes.h).
+        void setChordType (ChordGroup group, Scale scale, int degree, int type);
         void resetAll (ChordGroup group);
 
         ChordEdits getEdits() const;
+
+        // Bumped by every change (edits, reset, restore): the processor tells the host when it moves.
+        uint32_t getVersion() const;
 
         // State. copyTree() for getStateInformation; restore() from setStateInformation, after
         // the host parameters (an invalid tree means no edits).

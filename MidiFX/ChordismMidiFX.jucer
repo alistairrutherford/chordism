@@ -19,6 +19,7 @@
         <FILE id="cfF020" name="ChordEditor.h" compile="0" resource="0" file="../Source/core/theory/ChordEditor.h"/>
         <FILE id="cfF021" name="ChordNamer.h" compile="0" resource="0" file="../Source/core/theory/ChordNamer.h"/>
         <FILE id="cfF022" name="RomanNumeral.h" compile="0" resource="0" file="../Source/core/theory/RomanNumeral.h"/>
+        <FILE id="cfF040" name="ChordTypes.h" compile="0" resource="0" file="../Source/core/theory/ChordTypes.h"/>
       </GROUP>
       <GROUP id="cfGrp1" name="core/engine">
         <FILE id="cfF004" name="MidiEvents.h" compile="0" resource="0" file="../Source/core/engine/MidiEvents.h"/>
@@ -57,6 +58,16 @@
       <GROUP id="cfGrp3" name="ui">
         <FILE id="cfF017" name="ChordismEditor.h" compile="0" resource="0" file="../Source/ui/ChordismEditor.h"/>
         <FILE id="cfF018" name="ChordismEditor.cpp" compile="1" resource="0" file="../Source/ui/ChordismEditor.cpp"/>
+        <FILE id="cfF041" name="Theme.h" compile="0" resource="0" file="../Source/ui/Theme.h"/>
+        <FILE id="cfF042" name="Theme.cpp" compile="1" resource="0" file="../Source/ui/Theme.cpp"/>
+        <FILE id="cfF043" name="ParamControl.h" compile="0" resource="0" file="../Source/ui/ParamControl.h"/>
+        <FILE id="cfF044" name="ParamControl.cpp" compile="1" resource="0" file="../Source/ui/ParamControl.cpp"/>
+        <FILE id="cfF045" name="Keyboards.h" compile="0" resource="0" file="../Source/ui/Keyboards.h"/>
+        <FILE id="cfF046" name="Keyboards.cpp" compile="1" resource="0" file="../Source/ui/Keyboards.cpp"/>
+        <FILE id="cfF047" name="ChordEditorPanel.h" compile="0" resource="0" file="../Source/ui/ChordEditorPanel.h"/>
+        <FILE id="cfF048" name="ChordEditorPanel.cpp" compile="1" resource="0" file="../Source/ui/ChordEditorPanel.cpp"/>
+        <FILE id="cfF049" name="Panels.h" compile="0" resource="0" file="../Source/ui/Panels.h"/>
+        <FILE id="cfF050" name="Panels.cpp" compile="1" resource="0" file="../Source/ui/Panels.cpp"/>
       </GROUP>
     </GROUP>
   </MAINGROUP>

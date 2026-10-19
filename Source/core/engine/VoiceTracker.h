@@ -81,6 +81,17 @@ namespace chordism
         int notesOwnedBy (Source source) const noexcept { return source < maxSources ? sources[source].count : 0; }
         int ownerCount (int channel, int note) const noexcept { return refs[keyOf (channel, note)]; }
         int soundingNotes() const noexcept { return sounding; }
+
+        // True if `note` sounds on any channel.
+        bool isSounding (int note) const noexcept
+        {
+            if (note < 0 || note > 127)
+                return false;
+            for (int ch = 0; ch < 16; ++ch)
+                if (refs[keyOf (ch, note)] != 0)
+                    return true;
+            return false;
+        }
         bool isEmpty() const noexcept { return sounding == 0; }
 
         // Forget everything without sending note-offs (after the receiver was reset some other way).

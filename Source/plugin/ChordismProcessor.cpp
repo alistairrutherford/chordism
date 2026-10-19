@@ -6,6 +6,7 @@ namespace chordism
 {
     namespace
     {
+
         // Phase 3 saved each sequencer step as a bool ("seq1Step1"…); Phase 4 keeps one mask
         // per pattern ("seq1Steps", Parameters.h). Folds the old steps of a saved state into
         // the masks, so a set saved before Phase 4 plays the same patterns.
@@ -53,12 +54,15 @@ namespace chordism
           snapshot (state)
     {
         generated.ensureSize (output.capacity * 4);
+        notifiedEditsVersion = chordEditor.getVersion();
+        uiState.addListener (this);
         startTimerHz (20);
     }
 
     ChordismProcessor::~ChordismProcessor()
     {
         stopTimer();
+        uiState.removeListener (this);
         port.close();   // releases any notes the port's receiver still holds
     }
 
@@ -169,9 +173,15 @@ namespace chordism
             settings.testPattern = false;
         }
 
-        // Short messages go through the engine; anything longer (SysEx) passes straight on.
+        // Short messages go through the engine; anything longer (SysEx) passes straight on. Keys
+        // played on the editor come first, at the block's first sample.
         input.clear();
         generated.clear();
+        {
+            const auto scope = uiFifo.read (uiFifo.getNumReady());
+            for (int i = 0; i < scope.blockSize1; ++i) input.push (uiNotes[(size_t) (scope.startIndex1 + i)]);
+            for (int i = 0; i < scope.blockSize2; ++i) input.push (uiNotes[(size_t) (scope.startIndex2 + i)]);
+        }
         for (const auto meta : midi)
         {
             if (meta.numBytes >= 1 && meta.numBytes <= 3)
@@ -211,6 +221,7 @@ namespace chordism
         if (transport.playing)
             lastTransport.ppq = transport.ppq + numSamples / transport.samplesPerBeat();
 
+        publishNoteStates();
         lastChordSlot.store (engine.getLastChordSlot(), std::memory_order_relaxed);
         soundingNotes.store (engine.getVoices().soundingNotes(), std::memory_order_relaxed);
         transportPlaying.store (transport.playing, std::memory_order_relaxed);
@@ -223,11 +234,41 @@ namespace chordism
         }
     }
 
+    void ChordismProcessor::publishNoteStates() noexcept
+    {
+        std::array<uint64_t, 2> s {}, k {}, p {};
+        for (int n = 0; n < 128; ++n)
+        {
+            const uint64_t bit = (uint64_t) 1 << (n & 63);
+            if (engine.getVoices().isSounding (n)) s[(size_t) (n >> 6)] |= bit;
+            if (engine.isKeyDown (n))              k[(size_t) (n >> 6)] |= bit;
+            if (engine.isPerforming (n))           p[(size_t) (n >> 6)] |= bit;
+        }
+        for (size_t i = 0; i < 2; ++i)
+        {
+            sounding[i].store (s[i], std::memory_order_relaxed);
+            keysDown[i].store (k[i], std::memory_order_relaxed);
+            performing[i].store (p[i], std::memory_order_relaxed);
+        }
+    }
+
+    void ChordismProcessor::pushUiNote (int note, int velocity, bool on) noexcept
+    {
+        if (note < 0 || note > 127)
+            return;
+        const auto scope = uiFifo.write (1);
+        const MidiEvent e = on ? MidiEvent::noteOn (0, note, juce::jlimit (1, 127, velocity), 0) : MidiEvent::noteOff (0, note, 0);
+        if (scope.blockSize1 > 0) uiNotes[(size_t) scope.startIndex1] = e;
+        else if (scope.blockSize2 > 0) uiNotes[(size_t) scope.startIndex2] = e;
+    }
+
     //==========================================================================
     void ChordismProcessor::timerCallback()
     {
         // Choosing a Chord Group resets the Chord Editor's edits.
         chordEditor.sync (snapshot.chordGroup(), engine.getEditsDiscarded(), engine.getDiscardedVersion());
+        if (const auto v = chordEditor.getVersion(); v != notifiedEditsVersion.exchange (v))
+            notifyStateChanged();
 
         const bool want = snapshot.portEnabled();
         if (want && ! port.isOpen() && port.getLastError() == 0)
@@ -241,6 +282,12 @@ namespace chordism
             savedPortIndex = port.getIndex();
             port.close();
         }
+    }
+
+    void ChordismProcessor::notifyStateChanged()
+    {
+        if (! restoringState)
+            updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
     }
 
     juce::String ChordismProcessor::getPortStatus() const
@@ -270,6 +317,7 @@ namespace chordism
     {
         auto tree = state.copyState();
         tree.appendChild (chordEditor.copyTree(), nullptr);
+        tree.appendChild (uiState.createCopy(), nullptr);
         tree.setProperty ("portIndex", port.isOpen() ? port.getIndex() : savedPortIndex, nullptr);
         tree.setProperty ("version", JucePlugin_VersionString, nullptr);
         if (auto xml = tree.createXml())
@@ -286,11 +334,20 @@ namespace chordism
         savedPortIndex = tree.getProperty ("portIndex", 0);
         const auto edits = tree.getChildWithName (ChordEditorState::treeType);
         tree.removeChild (edits, nullptr);
+        const auto ui = tree.getChildWithName (uiState.getType());
+        restoringState = true;
+        if (ui.isValid())
+        {
+            uiState.copyPropertiesAndChildrenFrom (ui, nullptr);
+            tree.removeChild (ui, nullptr);
+        }
+        restoringState = false;
         migrateSeqSteps (tree);
 
         // Parameters first, then the edits (made on the restored Chord Group): see run().
         state.replaceState (tree);
         chordEditor.restore (edits, snapshot.chordGroup());
+        notifiedEditsVersion = chordEditor.getVersion();   // a restore isn't a change to report
     }
 }
 

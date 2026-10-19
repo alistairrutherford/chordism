@@ -106,6 +106,20 @@ namespace chordism
         commit();
     }
 
+    void ChordEditorState::setChordType (ChordGroup group, Scale scale, int degree, int type)
+    {
+        if (! editor::validDegree (degree))
+            return;
+        const juce::ScopedLock sl (lock);
+        auto& d = editor::begin (model, group, scale, degree);
+        ChordSlot slot;
+        slot.degree = degree;
+        slot.steps = d.steps;
+        if (withChordType (slot, scale, type, slot))
+            d.steps = slot.steps;
+        commit();
+    }
+
     void ChordEditorState::resetDegree (int degree)
     {
         const juce::ScopedLock sl (lock);
@@ -118,6 +132,12 @@ namespace chordism
         const juce::ScopedLock sl (lock);
         editor::reset (model, group);
         commit();
+    }
+
+    uint32_t ChordEditorState::getVersion() const
+    {
+        const juce::ScopedLock sl (lock);
+        return version;
     }
 
     ChordEdits ChordEditorState::getEdits() const
