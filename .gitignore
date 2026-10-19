@@ -24,3 +24,9 @@ dist/
 
 # Ableton Live test sets
 spike1_test Project/
+
+# LiveBridge (Python)
+LiveBridge/.venv/
+LiveBridge/reports/
+__pycache__/
+.pytest_cache/
