@@ -102,7 +102,7 @@ namespace chordism::ui
     }
 
     //==========================================================================
-    StepSeqView::StepSeqView (Bindings& b, juce::Colour a) : bindings (b), accent (a) {}
+    StepSeqView::StepSeqView (Bindings& b, juce::Colour a) : bindings (b), accent (a), numberFont (font (10.0f)) {}
 
     StepSeqView::~StepSeqView()
     {
@@ -131,9 +131,18 @@ namespace chordism::ui
     {
         if (step != playing)
         {
+            // Only the two steps whose outline changes.
+            for (const int s : { playing, step })
+                if (s >= 0 && s < 16)
+                    repaint (stepBounds (s).getSmallestIntegerContainer().expanded (1));
             playing = step;
-            repaint();
         }
+    }
+
+    juce::Rectangle<float> StepSeqView::stepBounds (int step) const
+    {
+        const float w = (float) getWidth() / 16.0f;
+        return juce::Rectangle<float> (w * (float) step, 0.0f, w, (float) getHeight()).reduced (1.5f, 1.0f);
     }
 
     int StepSeqView::mask() const
@@ -149,10 +158,12 @@ namespace chordism::ui
     void StepSeqView::paint (juce::Graphics& g)
     {
         const int m = mask();
-        const float w = (float) getWidth() / 16.0f;
+        const auto clip = g.getClipBounds().toFloat();
         for (int s = 0; s < 16; ++s)
         {
-            auto r = juce::Rectangle<float> (w * (float) s, 0.0f, w, (float) getHeight()).reduced (1.5f, 1.0f);
+            auto r = stepBounds (s);
+            if (! r.expanded (1.0f).intersects (clip))
+                continue;
             const bool on = ((m >> s) & 1) != 0;
             g.setColour (on ? accent : (s % 4 == 0 ? colours::raised.brighter (0.08f) : colours::raised));
             g.fillRoundedRectangle (r, 3.0f);
@@ -162,7 +173,7 @@ namespace chordism::ui
                 g.drawRoundedRectangle (r, 3.0f, 1.5f);
             }
             g.setColour (on ? colours::background : colours::faint);
-            g.setFont (font (10.0f));
+            g.setFont (numberFont);
             g.drawText (juce::String (s + 1), r, juce::Justification::centred);
         }
     }

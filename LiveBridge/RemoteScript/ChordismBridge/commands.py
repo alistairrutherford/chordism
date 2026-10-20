@@ -676,6 +676,23 @@ class Commands:
         self._app().browser.load_item(pool[0]["_item"])
         return {"track_count_before": before, "loaded": self._public(pool[0])}
 
+    # -- Phase 8: CPU load, deleting a device -------------------------------
+
+    def cmd_get_cpu(self):
+        """Live's CPU meter: Application.average_process_usage and peak_process_usage, in percent
+        (Live 12.4.6 reports about 0.6 for its empty default set), or None where Live lacks them."""
+        app = self._app()
+        return {"average": _safe(lambda: float(app.average_process_usage)),
+                "peak": _safe(lambda: float(app.peak_process_usage))}
+
+    def cmd_delete_device(self, track, device):
+        """Delete a device from a track (as pressing Delete on it would)."""
+        t = self._track(track)
+        d = self._device(t, device)
+        index = list(t.devices).index(d)
+        t.delete_device(index)
+        return {"track": self._track_index(t), "deleted": index, "devices": [x.name for x in t.devices]}
+
     # -- meters ------------------------------------------------------------
 
     def cmd_get_meters(self, tracks=None):

@@ -89,9 +89,11 @@ namespace chordism::ui
         void handleAsyncUpdate() override { repaint(); }
         int mask() const;
         int stepAt (juce::Point<float>) const;
+        juce::Rectangle<float> stepBounds (int step) const;
 
         Bindings& bindings;
         juce::Colour accent;
+        juce::Font numberFont;
         juce::String paramId;
         juce::RangedAudioParameter* param = nullptr;
         int playing = -1;

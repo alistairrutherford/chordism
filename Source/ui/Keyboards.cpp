@@ -500,6 +500,7 @@ namespace chordism::ui
     {
         layout.lo = 21;
         layout.hi = 108;
+        labelFont = font (9.0f);
         setTooltip ("Output: the notes Chordism plays (red) and the keys held (outlined). Click to play.");
     }
 
@@ -511,18 +512,28 @@ namespace chordism::ui
             s[(size_t) n] = processor.isNoteSounding (n);
             k[(size_t) n] = processor.isKeyDown (n);
         }
-        if (s != sounding || k != down || m.settings.split != split)
+        if (m.settings.split != split)
         {
-            sounding = s;
-            down = k;
             split = m.settings.split;
             repaint();
         }
+        else
+        {
+            // Phase 8: only the keys that changed (while chords play, the whole keyboard every
+            // frame was most of the editor's CPU).
+            layout.area = getLocalBounds().toFloat();
+            for (int n = layout.lo; n <= layout.hi; ++n)
+                if (s[(size_t) n] != sounding[(size_t) n] || k[(size_t) n] != down[(size_t) n])
+                    repaint (layout.keyBounds (n).getSmallestIntegerContainer().expanded (1));
+        }
+        sounding = s;
+        down = k;
     }
 
     void OutputKeyboard::paint (juce::Graphics& g)
     {
         layout.area = getLocalBounds().toFloat();
+        const auto clip = g.getClipBounds().toFloat();
         for (int pass = 0; pass < 2; ++pass)
             for (int n = layout.lo; n <= layout.hi; ++n)
             {
@@ -530,6 +541,8 @@ namespace chordism::ui
                 if (black != (pass == 1))
                     continue;
                 auto r = layout.keyBounds (n);
+                if (! r.intersects (clip))
+                    continue;
                 if (black)
                 {
                     g.setColour (sounding[(size_t) n] ? colours::sounding : colours::blackKey);
@@ -542,7 +555,7 @@ namespace chordism::ui
                     if (n % 12 == 0)
                     {
                         g.setColour (colours::whiteKeyText.withAlpha (0.5f));
-                        g.setFont (font (9.0f));
+                        g.setFont (labelFont);
                         g.drawText ("C" + juce::String (n / 12 - 2), r.removeFromBottom (12.0f), juce::Justification::centred);
                     }
                 }

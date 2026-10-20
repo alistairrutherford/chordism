@@ -50,6 +50,7 @@ namespace chordism
                     || ! out.push (MidiEvent::noteOn (channel, note, velocity < 1 ? 1 : velocity, sample)))
                     return false;
                 ++sounding;
+                ++channelsOf[(size_t) note];
             }
 
             ++refs[key];
@@ -82,15 +83,10 @@ namespace chordism
         int ownerCount (int channel, int note) const noexcept { return refs[keyOf (channel, note)]; }
         int soundingNotes() const noexcept { return sounding; }
 
-        // True if `note` sounds on any channel.
+        // True if `note` sounds on any channel (the plug-in asks for all 128 every block).
         bool isSounding (int note) const noexcept
         {
-            if (note < 0 || note > 127)
-                return false;
-            for (int ch = 0; ch < 16; ++ch)
-                if (refs[keyOf (ch, note)] != 0)
-                    return true;
-            return false;
+            return note >= 0 && note <= 127 && channelsOf[(size_t) note] != 0;
         }
         bool isEmpty() const noexcept { return sounding == 0; }
 
@@ -98,6 +94,7 @@ namespace chordism
         void clear() noexcept
         {
             refs.fill (0);
+            channelsOf.fill (0);
             for (auto& s : sources)
                 s.count = 0;
             sounding = 0;
@@ -115,6 +112,7 @@ namespace chordism
             {
                 out.push (MidiEvent::noteOff (key >> 7, key & 127, sample));
                 --sounding;
+                --channelsOf[(size_t) (key & 127)];
             }
         }
 
@@ -125,6 +123,7 @@ namespace chordism
         };
 
         std::array<uint16_t, 16 * 128> refs {};
+        std::array<uint8_t, 128> channelsOf {};   // per note, the channels it sounds on
         std::array<Owned, maxSources> sources {};
         int sounding = 0;
     };

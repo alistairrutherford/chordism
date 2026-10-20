@@ -41,6 +41,7 @@ compile_and_run test_smart
 compile_and_run test_melody
 compile_and_run test_midiio
 compile_and_run test_sync
+compile_and_run test_edge
 
 echo ""
 echo "All test binaries passed."

@@ -53,6 +53,7 @@ namespace chordism
 
         void prepareToPlay (double sampleRate, int samplesPerBlock) override;
         void releaseResources() override;
+        void reset() override;
         bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
         void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
         void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -151,6 +152,7 @@ namespace chordism
 
         // Preallocated in the constructor / prepareToPlay; never resized in processBlock.
         EventBuffer<2048> input;
+        static constexpr int inputReserve = 256;   // slots only key-ups may take (Phase 8)
         std::array<MidiEvent, 256> uiNotes {};
         juce::AbstractFifo uiFifo { 256 };
         NoteBits sounding {}, keysDown {}, performing {};

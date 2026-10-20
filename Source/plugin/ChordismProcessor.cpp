@@ -35,6 +35,16 @@ namespace chordism
                 }
             }
         }
+
+        // Phase 8: a saved value that isn't a finite number (a damaged set or preset file) is
+        // dropped rather than making the parameter NaN: a restore keeps the parameter's value,
+        // a preset gives it its default.
+        void dropNonFiniteValues (juce::ValueTree& tree)
+        {
+            for (auto child : tree)
+                if (child.hasType ("PARAM") && child.hasProperty ("value") && ! std::isfinite ((double) child.getProperty ("value")))
+                    child.removeProperty ("value", nullptr);
+        }
     }
 
     juce::AudioProcessor::BusesProperties ChordismProcessor::makeBuses()
@@ -70,6 +80,14 @@ namespace chordism
     }
 
     void ChordismProcessor::releaseResources()
+    {
+        engine.requestReset();
+    }
+
+    // Phase 8: JUCE's VST3 wrapper calls this when the host stops processing (setProcessing
+    // (false)). No MIDI can go out then, so every note ends on the first block after it resumes:
+    // in Live, a device switched off leaves its chord sounding until it is on again.
+    void ChordismProcessor::reset()
     {
         engine.requestReset();
     }
@@ -167,7 +185,10 @@ namespace chordism
                 e.size = (uint8_t) meta.numBytes;
                 for (int i = 0; i < meta.numBytes; ++i)
                     e.data[i] = meta.data[i];
-                input.push (e);
+                // A host flooding more than the buffer holds loses note-ons first: the last
+                // slots are kept for key-ups, so no key is left down.
+                if (input.space() > inputReserve || e.isNoteOff() || e.isAllNotesOff())
+                    input.push (e);
             }
             else
             {
@@ -353,14 +374,15 @@ namespace chordism
     {
         auto tree = preset.createCopy();
         migrateSeqSteps (tree);
+        dropNonFiniteValues (tree);
         for (auto* p : getParameters())
         {
             auto* param = dynamic_cast<juce::RangedAudioParameter*> (p);
             if (param == nullptr || ! params::isPresetParameter (param->paramID))
                 continue;
             const auto child = tree.getChildWithProperty ("id", param->paramID);
-            const float value = child.isValid() ? param->convertTo0to1 ((float) (double) child.getProperty ("value"))
-                                                : param->getDefaultValue();
+            const float value = child.hasProperty ("value") ? param->convertTo0to1 ((float) (double) child.getProperty ("value"))
+                                                            : param->getDefaultValue();
             if (std::abs (param->getValue() - value) > 1.0e-6f)
                 param->setValueNotifyingHost (value);
         }
@@ -505,6 +527,7 @@ namespace chordism
         }
         restoringState = false;
         migrateSeqSteps (tree);
+        dropNonFiniteValues (tree);
 
         // Parameters first, then the edits (made on the restored Chord Group): see run().
         pendingProgram = -1;              // a restore replaces a program change still waiting

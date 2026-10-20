@@ -125,6 +125,7 @@ namespace chordism::ui
         PianoLayout layout;
         int split = 60;
         std::array<bool, 128> sounding {}, down {};
+        juce::Font labelFont;             // made once: a new Font on every paint costs a typeface lookup
     };
 
     // A short name for an arp pattern ("Lin ↑").

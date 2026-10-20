@@ -68,6 +68,8 @@ uv run pytest tests/test_phase3_live.py    # Phase 3: strum, arp, repeat + veloc
 uv run pytest tests/test_phase4_live.py    # Phase 4: Smart Scale mappings and patterns (VST3)
 uv run pytest tests/test_phase5_live.py -k prepare   # Phase 5: state restore (two stages, see the file)
 uv run pytest tests/test_phase6_live.py    # Phase 6: Melody seed, presets (Program), Export file + Live's import
+uv run pytest tests/test_phase7_live.py    # Phase 7: Instance Sync, look-ahead, voice leading
+uv run pytest tests/test_phase8_live.py    # Phase 8: CPU of 8 instances; notes when Chordism is switched off or deleted
 ```
 
 ### The Phase 1 check (`test_phase1_live.py`)
@@ -175,6 +177,8 @@ index or a name. Names match exactly (ignoring case) first, then by a unique sub
 | `get_presets` | `track`, `device` | `{device, presets[], selected}`: Live's preset list for a plug-in (for a JUCE VST3, only "Default") |
 | `set_preset` | `track`, `device`, `preset` (index or name) | as `get_presets`, after selecting it |
 | `load_clip_file` | `name`, `category="user_library"` | loads a MIDI file from the browser as a double-click would: Live imports it as a session clip on a new MIDI track; returns `track_count_before` and the browser item |
+| `get_cpu` | | `{average, peak}`: Live's CPU meter (`Application.average_process_usage` / `peak_process_usage`, in percent: about 0.6 for an empty set in 12.4.6), `null` where Live lacks them (Phase 8) |
+| `delete_device` | `track`, `device` | `{track, deleted, devices}` (Phase 8) |
 
 **Plug-in lookup.** `load_device` walks `application().browser.<category>` (for plugins, the
 Plug-Ins tree). It loads onto the track by selecting it and calling `browser.load_item`.

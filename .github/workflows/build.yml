@@ -11,8 +11,9 @@ env:
 
 jobs:
   macos:
-    name: Build, core tests, pluginval
-    runs-on: macos-14
+    name: Core tests, clean install, pluginval, snapshot checks, CPU
+    # macos-14 images are unsupported from 2026-11-02 (actions/runner-images announcement).
+    runs-on: macos-26
     steps:
       - name: Checkout project
         uses: actions/checkout@v5
@@ -29,28 +30,6 @@ jobs:
       - name: Core tests (no JUCE needed)
         run: repo/Tests/run_tests.sh
 
-      - name: Build Projucer
-        run: |
-          set -o pipefail
-          xcodebuild -project JUCE/extras/Projucer/Builds/MacOSX/Projucer.xcodeproj \
-                     -configuration Release build | tail -3
-
-      - name: Point the module path at the runner's JUCE and regenerate the project
-        run: |
-          JMOD="$GITHUB_WORKSPACE/JUCE/modules"
-          PROJUCER="JUCE/extras/Projucer/Builds/MacOSX/build/Release/Projucer.app/Contents/MacOS/Projucer"
-          # The committed .jucer file holds the developer machine's module path.
-          sed -i '' "s#/Users/alistairrutherford/Development/JUCE/modules#$JMOD#g" repo/Chordism.jucer
-          "$PROJUCER" --resave repo/Chordism.jucer
-
-      - name: Build VST3 and Standalone
-        run: |
-          # Without pipefail the step's status is grep's, so a failed build would pass.
-          set -o pipefail
-          xcodebuild -project repo/Builds/MacOSX/Chordism.xcodeproj \
-                     -target "Chordism - All" -configuration Release build | \
-            grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
-
       - name: Install pluginval
         run: |
           curl -fsSL -o pluginval.zip \
@@ -58,13 +37,31 @@ jobs:
           unzip -q pluginval.zip -d pluginval
           echo "PLUGINVAL=$GITHUB_WORKSPACE/pluginval/pluginval.app/Contents/MacOS/pluginval" >> "$GITHUB_ENV"
 
-      - name: pluginval (strictness 10)
-        run: repo/Tests/run_validation.sh
+      # The runner is a fresh account: Tools/install.sh builds Projucer, builds the VST3 and the
+      # Standalone from this checkout, signs them ad hoc, installs them in ~/Library/Audio/Plug-Ins
+      # and ~/Applications, and runs pluginval at strictness 10 on the installed VST3.
+      - name: Build, sign and install (Tools/install.sh), pluginval strictness 10
+        run: repo/Tools/install.sh --juce "$GITHUB_WORKSPACE/JUCE" --validate
 
-      - name: Upload pluginval logs
+      # The pixel references are tied to the developer's macOS font rendering, so CI renders the
+      # snapshots without comparing them; every other check runs.
+      - name: Snapshot checks (no pixel comparison) and the CPU benchmark
+        run: |
+          JMOD="$GITHUB_WORKSPACE/JUCE/modules"
+          sed -i '' "s#<MODULEPATH id=\"\([a-z_]*\)\" path=\"[^\"]*\"/>#<MODULEPATH id=\"\1\" path=\"$JMOD\"/>#" \
+              repo/Tests/Snapshot/ChordismSnapshot.jucer
+          export PROJUCER="$GITHUB_WORKSPACE/JUCE/extras/Projucer/Builds/MacOSX/build/Release/Projucer.app/Contents/MacOS/Projucer"
+          repo/Tests/run_snapshot.sh --no-pixels
+          repo/Tests/run_bench.sh 5
+
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pluginval-logs
-          path: repo/Tests/build/pluginval
+          name: logs
+          path: |
+            repo/Tests/build/pluginval
+            repo/Tests/build/snapshot
+            repo/dist/build/xcodebuild.log
+            repo/dist/projucer-build.log
           if-no-files-found: ignore
