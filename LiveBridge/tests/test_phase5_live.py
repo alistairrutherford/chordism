@@ -51,7 +51,7 @@ def _shown(live, rig):
 
 
 def test_state_prepare(live, rig, reference):
-    _configure(live, rig, reference, KEY, SCALE, GROUP, compensate=True)
+    _configure(live, rig, reference, KEY, SCALE, GROUP)
     for name, (value, choices) in SETTINGS.items():
         _set(live, rig, name, value, choices)
     shown = _shown(live, rig)
@@ -75,7 +75,7 @@ def test_state_restored(live, rig, reference):
 
     _set(live, rig, "Test pattern", True)
 
-    routing, audio, clip, notes, beats = _record(live, rig, "vst3")
+    routing, audio, clip, notes, beats = _record(live, rig)
     chords = reference["table"][(KEY, SCALE, GROUP)]
     tol = TOL_MS / (60000.0 / TEMPO)
     wrong = []

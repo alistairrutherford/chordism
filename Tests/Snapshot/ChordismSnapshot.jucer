@@ -10,7 +10,6 @@
         <FILE id="snF000" name="Main.cpp" compile="1" resource="0" file="Main.cpp"/>
         <FILE id="snF001" name="ChordismProcessor.cpp" compile="1" resource="0" file="../../Source/plugin/ChordismProcessor.cpp"/>
         <FILE id="snF002" name="Parameters.cpp" compile="1" resource="0" file="../../Source/plugin/Parameters.cpp"/>
-        <FILE id="snF003" name="VirtualMidiOut.cpp" compile="1" resource="0" file="../../Source/plugin/VirtualMidiOut.cpp"/>
         <FILE id="snF004" name="ChordEditorState.cpp" compile="1" resource="0" file="../../Source/plugin/ChordEditorState.cpp"/>
         <FILE id="snF005" name="ChordismEditor.cpp" compile="1" resource="0" file="../../Source/ui/ChordismEditor.cpp"/>
         <FILE id="snF006" name="Theme.cpp" compile="1" resource="0" file="../../Source/ui/Theme.cpp"/>
@@ -39,7 +38,7 @@
   </MODULES>
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_WEB_BROWSER="0" JUCE_USE_CURL="0"/>
   <EXPORTFORMATS>
-    <XCODE_MAC targetFolder="Builds/MacOSX" extraFrameworks="CoreMIDI" extraCompilerFlags="-include $(SRCROOT)/../../SnapshotDefines.h">
+    <XCODE_MAC targetFolder="Builds/MacOSX" extraCompilerFlags="-include $(SRCROOT)/../../SnapshotDefines.h">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="ChordismSnapshot" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="ChordismSnapshot" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>

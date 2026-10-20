@@ -84,10 +84,7 @@ namespace chordism
     {
         setup.setVisible (shown);
         if (shown)
-        {
-            setup.refresh();
             setup.toFront (false);
-        }
     }
 
     void ChordismEditor::showKeyboard (bool shown)
@@ -305,7 +302,5 @@ namespace chordism
         smartPanel.refresh (m);
         if (chordEditorPanel.isVisible())
             chordEditorPanel.refresh (m);
-        if (setup.isVisible())
-            setup.refresh();
     }
 }

@@ -16,7 +16,7 @@ no code, artwork, preset files, manual text or product name come from ChordPrism
 
 | # | Requirement | Acceptance criterion |
 |---|-------------|----------------------|
-| R1 | Loads in Live (and other hosts) and sends MIDI to an instrument | Passes `auval` and `pluginval` (strictness 10). In Live, an instrument on another track plays Chordism's output and can record it. |
+| R1 | Loads in Live (and other hosts) and sends MIDI to an instrument | Passes `pluginval` (strictness 10) as a VST3 (`auval` until the AU builds were removed, 2026-10-20). In Live, an instrument on another track plays Chordism's output and can record it. |
 | R2 | **Chord Generator:** one key plays the diatonic chord for the chosen Key, Scale and Chord Group | Unit tests: every white key gives the correct chord in all 12 keys × all scales × all chord groups. |
 | R3 | **Chord Editor:** each chord can be edited step by step (tone on/off, accidental, octave stacking) | Every chord in a reference set (triads to 13ths, altered chords, inversions, drop voicings) can be built in the editor, and the output matches. |
 | R4 | **Chord effects:** strum, arp, repeat, hold, octave, stack, velocity algorithm, step sequencer | Events land sample-accurately on the host grid (fake-transport tests, including loops and tempo changes). No stuck notes in any test. |
@@ -65,11 +65,11 @@ Priority: **P1** is the core instrument (Phases 1–5). **P2** finishes ChordPri
 | I/O | MIDI CC control of parameters | All parameters are host parameters (APVTS) | P1 |
 | I/O | Computer-keyboard (QWERTY) playing | On-screen keyboard plus a QWERTY map in the editor | P2 |
 | Presets | Save, Open, Navigate; genre, artist, vibe and user presets | Same, with our own factory library (about 20 at launch; personal use) | P2 |
-| Hosting | Host a VST instrument inside the plugin, a library, scanning, drag-to-library | **Dropped** (2026-10-19). VST3 MIDI From and the virtual port cover Live | — |
+| Hosting | Host a VST instrument inside the plugin, a library, scanning, drag-to-library | **Dropped** (2026-10-19). VST3 MIDI From covers Live | — |
 | Multi | Instance Sync (Key, Scale, Chord shared by all instances) | Process-wide shared session with sync groups | P2 |
 | Prefs | Tooltips, keyboard display, colours, shifter mode, Toggle/Standard | Same, stored per user | P2 |
 | Extra | — | Separate MIDI output channel for Chord and Smart Scale parts | P3 |
-| Extra | — | CoreMIDI virtual output port "Chordism Out n" (built in Phase 1; the AU instrument's route in Live) | P1 |
+| Extra | — | ~~CoreMIDI virtual output port "Chordism Out n"~~ (built in Phase 1 for the AU instrument; **removed** with the AU builds, 2026-10-20) | — |
 
 ---
 
@@ -77,14 +77,21 @@ Priority: **P1** is the core instrument (Phases 1–5). **P2** finishes ChordPri
 
 NoteCap established that **Live does not host AU MIDI effects (`aumi`) and drops MIDI output from
 AU plugins.** ChordPrism handles this by shipping a VST instrument and by hosting instruments
-itself. Chordism ships the VST instrument, but **does not host instruments** (dropped 2026-10-19):
+itself. Chordism ships the VST instrument, but **does not host instruments** (dropped 2026-10-19).
+
+**2026-10-20: Chordism is VST3 + Standalone only.** The user removed the AU instrument, the AU MIDI
+effect (`MidiFX/`), the CoreMIDI virtual port with its three parameters (*Virtual port*, *Port
+compensation*, *Port trim*), the port-timing tests and the Phase 0 spike (`Spikes/`). Reasons:
+in Live the AU could only reach an instrument through the port, one buffer late, and the port
+fed back into any Chordism track whose input was *All Ins* (each echoed chord note played
+another chord). The tables below are kept as the record of what was built and measured.
 
 | Build | Type | Used in | How MIDI reaches the instrument |
 |---|---|---|---|
 | **VST3 instrument** (primary for Live) | Instrument with MIDI in/out, silent stereo out | Live, Bitwig, Cubase, Studio One, Reaper, FL | On a separate track. The destination track uses *MIDI From: Chordism track → Chordism*. Live records what arrives at the destination's input, which is the generated MIDI. |
 | **AU instrument** (`aumu`) | Instrument with MIDI out, silent stereo out | Live and other AU hosts | Through the **CoreMIDI virtual port**, because Live ignores AU MIDI output. |
 | **AU MIDI effect** (`aumi`) | MIDI effect | Logic Pro | Inserted in the MIDI FX slot, before the instrument. |
-| Standalone | App | Development and debugging | Outputs to a MIDI device or the virtual port. |
+| Standalone | App | Development and debugging | Outputs to a MIDI device (and, until 2026-10-20, the virtual port). |
 
 The **AU instrument** (`aumu`) build stays even without hosting. It makes no sound of its own,
 and Live ignores AU MIDI output, so in Live its MIDI reaches an instrument through the CoreMIDI
@@ -101,7 +108,7 @@ instances):**
 | Build | Bundle ID | Manufacturer | Plug-in code | AU type |
 |---|---|---|---|---|
 | `Chordism.jucer`: VST3, AU, Standalone | `com.alistairrutherford.chordism` | `ARut` (Alistair Rutherford) | `Cdsm` | `aumu` |
-| `MidiFX/ChordismMidiFX.jucer`: AU "Chordism MIDI FX" | `com.alistairrutherford.chordism.midifx` | `ARut` | `Cdsf` | `aumi` |
+| ~~`MidiFX/ChordismMidiFX.jucer`: AU "Chordism MIDI FX"~~ (removed 2026-10-20) | `com.alistairrutherford.chordism.midifx` | `ARut` | `Cdsf` | `aumi` |
 
 Host parameter IDs (`Source/plugin/Parameters.h`, version 1) and the order of the Key, Scale and
 Chord Group choices are saved in sets too: only append.
@@ -332,7 +339,7 @@ the musical-time events in the queue to be recalculated.
 **Decisions made in Phase 6 (2026-10-20), presets and QWERTY:**
 - **Factory presets live in the code** (`Source/plugin/FactoryPresets.cpp`: 21, plus *Init*), as host-parameter values over the defaults, checked by the compiler against the engine's enums; no install step is needed and the browser always has them. Genre (10), Artist-style (5, by style only), Vibe (6); seven use Melody slots.
 - **They are also the plug-in's programs** (program 0 = Init, every default, so a new instance is its program 0). The VST3 then has JUCE's *Program* parameter, which Live shows (Live lists no VST3 programs under the device's presets): LiveBridge loads presets through it. A program chosen off the message thread waits for the processor's timer; a state restore cancels a waiting one. The current program, preset name and category are saved with the plug-in, so a host restoring its program parameter doesn't reload over a restored state.
-- **User presets** are XML files of the plug-in state's own tree in `~/Music/Chordism/Presets/<Category>/<Name>.xml` (categories Genre, Artist-style, Vibe, User; any folder is listed as a category). A preset holds every host parameter except Enable, the virtual port's three and the test rig's three (`params::isPresetParameter`), and the Chord Editor's edits; not the editor's preferences. Loading sets each preset parameter (the preset's value, or the default if it has none), restores the edits on the preset's Chord Group, and ends every note.
+- **User presets** are XML files of the plug-in state's own tree in `~/Music/Chordism/Presets/<Category>/<Name>.xml` (categories Genre, Artist-style, Vibe, User; any folder is listed as a category). A preset holds every host parameter except Enable, the virtual port's three (removed since) and the test rig's three (`params::isPresetParameter`), and the Chord Editor's edits; not the editor's preferences. Loading sets each preset parameter (the preset's value, or the default if it has none), restores the edits on the preset's Chord Group, and ends every note.
 - **QWERTY** (a preference in Setup, saved with the editor's): *Piano* (default): the A row from the C an octave below the split (A–J the chord zone's white keys, W E T Y U its shifters, K ' on the Smart Scale, O P its first pattern keys), Z / X an octave down / up; *Two rows*: Z–/ the octave below the split, Q–P the split's octave; or *Off*. Keys play through the same lock-free queue as on-screen clicks; the editor takes the keyboard focus when it opens and releases held keys when it loses it.
 
 ---
@@ -344,7 +351,7 @@ out at `~/Development/JUCE`. No CMake or Homebrew.
 
 ```
            MIDI in ─► InputRouter ─┬─► ChordZone ─► ChordEngine ─► ChordFxChain ──┐
- (host or QWERTY / on-screen key)  │      ▲ shifters                              ├─► VoiceTracker ─► EventQueue ─► MIDI out (+ virtual port)
+ (host or QWERTY / on-screen key)  │      ▲ shifters                              ├─► VoiceTracker ─► EventQueue ─► MIDI out
                                    └─► SmartZone ─► ScaleMapper ─► PatternEngine ─┘                         │
                                           ▲ current chord / look-ahead                                      └─► ExportRecorder
          Transport (AudioPlayHead) ─► Clock ─► all timed components         SharedSession ◄─► other instances
@@ -364,7 +371,7 @@ out at `~/Development/JUCE`. No CMake or Homebrew.
 ### Parameters vs. state
 - **Host parameters (APVTS, automatable, MIDI-CC learnable):** Key, Scale, Progression, Chord Group, Mapping, Split, Mutes, Enable, every effect setting for both zones, and the active pattern's settings. About 80 parameters.
 - **ValueTree state (not automated):** the 7×7 chord-editor matrix and UI preferences. (Phase 2 made the shifter targets host parameters; Phase 3 the sequencer steps; Phase 4 the five pattern slots' settings and the Smart Scale's sequencer, so LiveBridge and automation reach them.)
-- **Live's limit:** Live shows a plug-in's parameters to LiveBridge only up to its auto-populate threshold, at most 128 (Options.txt `-_PluginAutoPopulateThreshold=128`); above it the panel is empty. Phase 4 packed the sequencer steps into one 16-bit mask per pattern (`Seq 1-4 steps`, shown as `x...x...`) to make room: **111 parameters after Phase 4, so 17 are left** for Phases 5-7. **Phase 6: 123 parameters, plus the VST3's *Program* (JUCE adds it with the programs), so Live shows 125 (and Device On): 3 are left for Phase 7** (Sync group, look-ahead window, voice leading).
+- **Live's limit:** Live shows a plug-in's parameters to LiveBridge only up to its auto-populate threshold, at most 128 (Options.txt `-_PluginAutoPopulateThreshold=128`); above it the panel is empty. Phase 4 packed the sequencer steps into one 16-bit mask per pattern (`Seq 1-4 steps`, shown as `x...x...`) to make room: **111 parameters after Phase 4, so 17 are left** for Phases 5-7. **Phase 6: 123 parameters, plus the VST3's *Program* (JUCE adds it with the programs), so Live shows 125 (and Device On): 3 are left for Phase 7** (Sync group, look-ahead window, voice leading). **2026-10-20: removing the virtual port's three leaves 120 + Program = 121 (Live: 122 with Device On), so 6 are left.**
 
 ### Real-time safety rules
 - `processBlock` never allocates, locks, logs or does file I/O. All buffers are allocated in `prepareToPlay`.
@@ -391,7 +398,12 @@ Resizable, about 1100×640 by default. Our own visual design; ChordPrism's look 
 - **Chord keys menu:** one right-click menu per white key: *Degree* (makes the progression Custom, starting from the current order), *Chord type* (27 types, `Source/core/theory/ChordTypes.h`; rewrites the degree's steps in the Chord Editor) and *Reset chord edits*. Black keys: the shifter's type, group, key and scale.
 - **Smart keys** show the tone each key plays now, spelled in the key, with chord tones underlined and the root darker; black keys show their slot and arp. The keyboard shows the split's octave and the next (25 keys).
 - **On-screen playing:** every keyboard plays through the engine like host MIDI (a lock-free queue into the next block), so clicks behave exactly like keys. QWERTY playing is Phase 6.
-- **Phase 6 (2026-10-20):** the top bar gained the **preset browser** (◀ name ▶ · Save; the name opens a call-out with a search box over every preset, *Import MIDI chords…* and *Show folder*) and the **Export handle** (grip + "n bars"; dim until the first bar has finished; a red dot while recording; drag it into the host). Keyboard became *Keys*. The pattern panel shows *Melody swing* and *Seed* beside the slot buttons, and for a Melody slot *Notes/bar* and *Rhythm* instead of *Rate* (*Arp chord* reads *Chord tones*); a Melody slot's black keys read *Mel*. Dropping a .mid anywhere on the editor imports it (the editor is outlined while a file is over it; the result shows over the chord keys for 8 s). Setup has *Preferences: QWERTY keys*.
+- **Change (2026-10-20): AU builds and virtual port removed** (the user's request, after an armed Chordism track with input *All Ins* fed the port's output back into itself):
+- **Removed:** the AU instrument target (`Chordism.jucer` now builds VST3 + Standalone; `Info-AU.plist`, CoreMIDI linking), the `MidiFX/` project (AU MIDI effect for Logic), `Source/plugin/VirtualMidiOut.*` and `Source/core/engine/PortTiming.h`, the parameters *Virtual port*, *Port compensation* and *Port trim* (a saved state's values for them are ignored; the other IDs are unchanged, so sets keep their settings), the processor's port code and host-time reading, the Setup page's port section and status, `Spikes/` (the Phase 0 spike) and its bundles, `LiveBridge/tests/test_timing_live.py` (spike + port timing), and the port route and trim tests of `test_phase1_live.py`. The installed `Chordism.component`, `ChordismMidiFX.component`, `ChordismSpike.component` and `ChordismSpike.vst3` were deleted from `~/Library/Audio/Plug-Ins`. `Tests/run_validation.sh` now runs pluginval on the VST3 only; CI builds one project.
+- **Parameters:** 120 (Live shows 122 with Program and Device On): 6 left for Phase 7.
+- **Checks:** `Tests/run_tests.sh` passes (the port-timestamp test is gone); `Tests/run_snapshot.sh` passes (*120 parameters, all with a control*; the Setup reference image **updated** with `--update`, the port section being gone; the preset checks use Enable and the test rig as the parameters a preset leaves alone); the VST3 builds; `pluginval` strictness 10 passes. **Live** (restarted with the new build): `test_offline.py` 11 passed; Phases 1-4 and 6 18 passed (Phase 1 now records the 2 cases through VST3 MIDI From only, every note at 0.000 ms); Phase 5's *prepare* stage passes (Live shows 121 parameters, Program included; Device On aside).
+
+**Phase 6 (2026-10-20):** the top bar gained the **preset browser** (◀ name ▶ · Save; the name opens a call-out with a search box over every preset, *Import MIDI chords…* and *Show folder*) and the **Export handle** (grip + "n bars"; dim until the first bar has finished; a red dot while recording; drag it into the host). Keyboard became *Keys*. The pattern panel shows *Melody swing* and *Seed* beside the slot buttons, and for a Melody slot *Notes/bar* and *Rhythm* instead of *Rate* (*Arp chord* reads *Chord tones*); a Melody slot's black keys read *Mel*. Dropping a .mid anywhere on the editor imports it (the editor is outlined while a file is over it; the result shows over the chord keys for 8 s). Setup has *Preferences: QWERTY keys*.
 - **Telling the host about state changes:** the Chord Editor's edits and the UI's preferences aren't parameters, so the processor calls `updateHostDisplay (…withNonParameterStateChanged (true))` when they change (JUCE: VST3 `setDirty`), as the Phase 0 spike did; a state restore doesn't report a change. Not checked in Live: whether an edit alone marks the set as modified.
 
 ---
@@ -422,7 +434,7 @@ instrument that covers the core of ChordPrism.
 - **Stuck-note fuzzing:** random notes, parameter changes, preset loads and transport changes over thousands of blocks. At the end, `VoiceTracker` must be empty and every note-on must have a matching note-off.
 - **Determinism:** melody and random strum use a seeded PRNG, so the same input gives the same output.
 - **MIDI I/O:** import ↔ export round trips, and import of hand-made files (inversions, slash chords, 13ths, non-diatonic chords).
-- **Host validation:** `auval` (aumu + aumi), `pluginval` at strictness 10 for VST3 and AU, in GitHub Actions on macOS.
+- **Host validation:** `pluginval` at strictness 10 for the VST3, in GitHub Actions on macOS (`auval` for the AU builds until they were removed, 2026-10-20).
 - **Live-in-the-loop (`LiveBridge/`):** a Remote Script inside Live serves the Live Object Model over a local socket. pytest drives it, and so does an MCP server (`live-bridge` in `.mcp.json`) so Claude can drive Live interactively. It loads Chordism, sets routing and parameters, records N bars and reads the recorded notes back with exact start times. It automates **routing (VST3 and port), recording timing, two-instance sync, and output-level checks**. Every setting that a test needs to change must be a host parameter, because LiveBridge reaches the plugin only through Live's device parameters. Live must be running with its GUI, so these tests run on the development Mac, not in CI. Live has to be restarted to pick up a rebuilt plugin (`LiveBridge/scripts/restart_live.sh`).
 - **Manual Live checklist:** whatever the LOM can't reach: saving and reopening a set (state restore), buffer-size changes, export drag-out, freeze, deleting the device while notes are held, and the plugin rescan.
 
@@ -432,7 +444,7 @@ instrument that covers the core of ChordPrism.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| VST3 MIDI output can't be routed in the user's Live version | Low–Medium | High | Phase 0: VST3 routing works in Live 12.4.6. Fallback: the CoreMIDI virtual port |
+| VST3 MIDI output can't be routed in the user's Live version | Low–Medium | High | Phase 0: VST3 routing works in Live 12.4.6 (the CoreMIDI virtual-port fallback was removed 2026-10-20) |
 | Stuck or orphaned notes when parameters change mid-note | High (if neglected) | High | `VoiceTracker` ownership model and fuzz tests from Phase 1 |
 | Timing errors at loop wraps and tempo changes | Medium | Medium | Musical-time event queue that is recalculated, with fake-transport tests |
 | Plugin scanning crashes the DAW | Medium | High | Out-of-process scanner, a blocklist, and drag-to-library |
@@ -449,7 +461,6 @@ instrument that covers the core of ChordPrism.
 ```
 chordism/
 ├── Chordism.jucer              # VST3 + AU instrument + Standalone
-├── MidiFX/ChordismMidiFX.jucer # AU MIDI effect (aumi) for Logic, same Source/ (own folder, §3)
 ├── Builds/MacOSX/              # generated by Projucer
 ├── JuceLibraryCode/            # generated by Projucer
 ├── Source/
@@ -462,7 +473,7 @@ chordism/
 ├── Tests/                      # run_tests.sh, run_integration.sh, fixtures/
 ├── Tools/                      # install.sh, preset/fixture generators
 ├── LiveBridge/                 # Live-in-the-loop tests + MCP server (§8)
-└── .github/workflows/          # build, auval, pluginval
+└── .github/workflows/          # build, core tests, pluginval
 ```
 
 ---
@@ -472,7 +483,7 @@ chordism/
 1. ~~**Target DAW.**~~ Answered: **Ableton Live on macOS**.
 2. ~~**Live version.**~~ Answered: **Live 12** (12.4.6 in Phase 0).
 3. ~~**Personal use or distribution?**~~ Answered (2026-10-19): **personal use.** Ad-hoc signing, an install script, about 20 factory presets.
-4. ~~**Plugin hosting in v1?**~~ Answered (2026-10-19): **dropped.** No hosting module and no scanner. The AU instrument build stays, using the virtual port (§3).
+4. ~~**Plugin hosting in v1?**~~ Answered (2026-10-19): **dropped.** No hosting module and no scanner. The AU instrument build stayed, using the virtual port (§3), until both were removed on 2026-10-20.
 5. ~~**Keyboard size.**~~ Answered (2026-10-19): **25 keys.** Split stays at MIDI 60 (§4.1).
 6. ~~**Name.**~~ Answered (2026-10-19): **Chordism.** Phase 1 fixes the bundle ID and plugin codes, so they must not change afterwards.
 
@@ -482,7 +493,7 @@ chordism/
 
 | Phase | State | Notes |
 |---|---|---|
-| 0. Feasibility | **Done (2026-10-16).** Routing, hosting, drag-out and Instance Sync all confirmed in Live 12.4.6. | `Spikes/Phase0/`: AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Results by round are in `Spikes/Phase0/README.md`. Routing decision is in §3. |
+| 0. Feasibility | **Done (2026-10-16).** Routing, hosting, drag-out and Instance Sync all confirmed in Live 12.4.6. | `Spikes/Phase0/` (removed 2026-10-20; in git history): AU/VST3/Standalone, `auval` and `Tests/run_tests.sh` pass. Results by round were in `Spikes/Phase0/README.md`. Routing decision is in §3. |
 | Phase 0 carry-over: recording timing | **Done (2026-10-19).** VST3 is sample-accurate; the port is one block + ~1.6 ms late. | Measured with `LiveBridge/` (§3, §8). |
 | 1. Skeleton + theory core | **Done (2026-10-19).** Live plays C-major chords from the chord zone through VST3 MIDI From (sample-accurate) and the virtual port (one buffer late, §3), checked by LiveBridge. | Details below. |
 | 2. Chord Generator complete | **Done (2026-10-19).** R3 reference set, naming and stuck-note fuzz pass; progressions and shifters checked in Live (LiveBridge). | Details below. |
@@ -490,6 +501,7 @@ chordism/
 | 4. Smart Scale + patterns | **Done (2026-10-19).** Mapping tables match §4.3 in all keys, scales and degrees; patterns follow chord changes without restarting; fake-transport tests pass at 32–2048-sample blocks and 44.1/48/96 kHz; fuzz clean; both builds and host validation pass. Five Smart Scale cases recorded in Live (LiveBridge), sample-accurate. | Details below. |
 | 5. UI v1 | **Done (2026-10-19).** The editor of §6 is built; every parameter has a control; snapshot test and state round trip pass; both builds and host validation pass. A Live set saved with a Chord Editor edit reopens with every parameter and the edit (LiveBridge). | Details below. |
 | 6. Melody, I/O, presets | **Done (2026-10-20).** R6 round trip passes (8 cases: export → file → import plays every chord of the take note for note); Melody is a pure function of the seed (identical across all block sizes and rates, and take after take in Live); Export's file equals the recorded take and Live's own import of it gives the same clip; 21 factory presets load in Live through the Program parameter; QWERTY plays. All core, snapshot and host-validation suites pass; the Phase 1-4 Live tests pass again. | Details below. |
+| Change: AU builds and virtual port removed | **Done (2026-10-20).** Chordism is VST3 + Standalone only; the AU instrument, the AU MIDI effect, the CoreMIDI virtual port (3 parameters), the port-timing tests and the Phase 0 spike are gone. Core, snapshot and pluginval pass; the Live tests pass on the VST3. | Details below. |
 
 **Phase 6 (2026-10-20):**
 - **Core (plain C++):** `Source/core/engine/Melody.h` (rhythm templates, the seeded walk, timing), the melody steps in `ChordFx.h` (a melody slot is an arp whose steps are its notes; settings changes take the next note), `ScaleMapper::melodyTone`, and Melody settings in `PatternEngine.h`. `Source/core/midiio/`: `MidiFile.h` (read/write), `ChordImporter.h` (chords, key fit, encoding), `ExportRecorder.h` (the take and `exportBars`). Decisions are in §4.4, §4.6 and §4.7.

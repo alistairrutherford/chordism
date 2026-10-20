@@ -44,7 +44,7 @@ def test_progressions_and_shifters(live, rig, reference, report, case):
     key, scale, group = 0, "Major", "Triads"
     beats_per_bar = 4
 
-    _configure(live, rig, reference, key, scale, group, compensate=True)
+    _configure(live, rig, reference, key, scale, group)
     _set_choice(live, rig, "Progression", progression, PROGRESSIONS)
     _set_choice(live, rig, "Shifter mode", "Standard", SHIFTER_MODES)
     shifted_table = None
@@ -63,7 +63,7 @@ def test_progressions_and_shifters(live, rig, reference, report, case):
     _set_choice(live, rig, "Test shifter", str(shifter) if shifter else "Off", TEST_SHIFTER)
 
     try:
-        routing, audio, clip, notes, beats = _record(live, rig, "vst3")
+        routing, audio, clip, notes, beats = _record(live, rig)
     finally:
         _set_choice(live, rig, "Test shifter", "Off", TEST_SHIFTER)
         _set_choice(live, rig, "Progression", "Diatonic (1-7)", PROGRESSIONS)

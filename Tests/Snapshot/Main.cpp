@@ -13,7 +13,7 @@
 //                 restores the same sequencer patterns
 //   4. Phase 6    presets (every factory program loads its values over the defaults, Init is
 //                 the defaults, a preset's state round-trips into a new instance without touching
-//                 routing or the test rig, a load ends every note); MIDI import from a file (the
+//                 Enable or the test rig, a load ends every note); MIDI import from a file (the
 //                 parameters, edits and chords it gives); Export under a playing transport (the
 //                 handle's bar count and the file); QWERTY (both layouts, and a key press through
 //                 the editor plays its chord)
@@ -160,7 +160,6 @@ namespace
         set (p, params::smartSeqPattern, 1.0f);
         set (p, params::patternArp (2), (float) (numArpPatterns - 1));   // slot 3 in Melody mode (Phase 6)
         set (p, params::patternRhythm (2), (float) (int) MelodyRhythm::Clave);
-        set (p, params::port, 0.0f);
         // Edits on degree 5 (V): a flat 9th, the 7th an octave up as well.
         p.chordEditor.setOn (ChordGroup::Sevenths, Scale::Major, 4, 4, true);
         p.chordEditor.setAccidental (ChordGroup::Sevenths, Scale::Major, 4, 4, -1);
@@ -226,7 +225,7 @@ namespace
             juce::StringArray differ;
             check (equalParams (*p, *fresh, differ, false) && p->getPresetName() == "Init", "Init is the defaults (" + differ.joinIntoString (", ") + ")");
 
-            // A user preset's state into a new instance; routing and the test rig stay.
+            // A user preset's state into a new instance; Enable and the test rig stay.
             set (*p, params::key, 5.0f);
             set (*p, params::scale, (float) (int) Scale::Dorian);
             set (*p, params::chordGroup, (float) (int) ChordGroup::Ninths);
@@ -236,17 +235,17 @@ namespace
             p->chordEditor.setAccidental (ChordGroup::Ninths, Scale::Dorian, 3, 2, 1);
             const auto tree = p->presetState();
             auto other = std::make_unique<ChordismProcessor>();
-            set (*other, params::port, 0.0f);
+            set (*other, params::enable, 0.0f);
             set (*other, params::testPattern, 1.0f);
             other->applyPreset (tree, "User", "Mine");
             differ.clear();
             check (equalParams (*p, *other, differ, true) && other->chordEditor.getEdits().sameEdits (p->chordEditor.getEdits())
-                       && get (*other, params::port) == 0.0f && get (*other, params::testPattern) == 1.0f && other->getPresetName() == "Mine",
-                   "a preset's state loads every preset parameter and the edits, and leaves the port and the test pattern ("
+                       && get (*other, params::enable) == 0.0f && get (*other, params::testPattern) == 1.0f && other->getPresetName() == "Mine",
+                   "a preset's state loads every preset parameter and the edits, and leaves Enable and the test pattern ("
                        + differ.joinIntoString (", ") + ")");
-            check (! tree.getChildWithProperty ("id", params::port).isValid() && ! tree.getChildWithProperty ("id", params::testPattern).isValid()
+            check (! tree.getChildWithProperty ("id", params::enable).isValid() && ! tree.getChildWithProperty ("id", params::testPattern).isValid()
                        && ! tree.getChildWithName ("UI").isValid(),
-                   "a preset doesn't hold the routing, the test rig or the editor's preferences");
+                   "a preset doesn't hold Enable, the test rig or the editor's preferences");
 
             // A load ends every note.
             block (*p, { juce::MidiMessage::noteOn (1, 48, (juce::uint8) 100) });
@@ -309,7 +308,6 @@ namespace
             p->setPlayHead (&head);
             p->prepareToPlay (48000.0, 512);
             set (*p, params::testPattern, 1.0f);
-            set (*p, params::port, 0.0f);
             std::unique_ptr<juce::AudioProcessorEditor> base (p->createEditorIfNeeded());
             auto* editor = dynamic_cast<ChordismEditor*> (base.get());
             juce::String error;

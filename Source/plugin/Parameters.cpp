@@ -93,7 +93,7 @@ namespace chordism::params
 
     bool isPresetParameter (const juce::String& paramId)
     {
-        for (const char* excluded : { enable, testPattern, testShifter, testSmart, port, portCompensate, portTrimMs })
+        for (const char* excluded : { enable, testPattern, testShifter, testSmart })
             if (paramId == excluded)
                 return false;
         return true;
@@ -149,13 +149,8 @@ namespace chordism::params
         layout.add (std::make_unique<AudioParameterBool> (id (muteScale), "Mute SS", false));
         layout.add (std::make_unique<AudioParameterBool> (id (testPattern), "Test pattern", false));
 
-        // The virtual port is the only route out of the AU instrument in Live, and isn't
-        // needed by the Logic MIDI effect.
-        layout.add (std::make_unique<AudioParameterBool> (id (port), "Virtual port", ! JucePlugin_IsMidiEffect));
-        layout.add (std::make_unique<AudioParameterBool> (id (portCompensate), "Port compensation", true));
-        layout.add (std::make_unique<AudioParameterFloat> (
-            id (portTrimMs), "Port trim", NormalisableRange<float> (-20.0f, 20.0f, 0.01f), 0.0f,
-            AudioParameterFloatAttributes().withLabel ("ms")));
+        // The virtual port's three parameters ("port", "portCompensate", "portTrimMs") were
+        // removed with the AU builds on 2026-10-20; a saved state's values for them are ignored.
 
         // Phase 2: Progression, its custom order, and the shifters. Appended, never reordered.
         layout.add (std::make_unique<AudioParameterChoice> (id (progression), "Progression", progressionNames(), 0));
@@ -297,9 +292,6 @@ namespace chordism::params
           muteChords (state.getRawParameterValue (params::muteChords)),
           muteScale (state.getRawParameterValue (params::muteScale)),
           testPattern (state.getRawParameterValue (params::testPattern)),
-          port (state.getRawParameterValue (params::port)),
-          portCompensate (state.getRawParameterValue (params::portCompensate)),
-          portTrimMs (state.getRawParameterValue (params::portTrimMs)),
           progression (state.getRawParameterValue (params::progression)),
           shifterMode (state.getRawParameterValue (params::shifterMode)),
           testShifter (state.getRawParameterValue (params::testShifter)),
@@ -343,7 +335,7 @@ namespace chordism::params
           ssMelodySeed (state.getRawParameterValue (params::melodySeed))
     {
         jassert (enable && key && scale && group && split && chordOctave && muteChords && muteScale
-                 && testPattern && port && portCompensate && portTrimMs && progression && shifterMode && testShifter);
+                 && testPattern && progression && shifterMode && testShifter);
 
         for (int n = 0; n < numChordSlots; ++n)
         {

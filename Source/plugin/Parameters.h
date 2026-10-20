@@ -7,7 +7,6 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../core/engine/ChordismEngine.h"
-#include "../core/engine/PortTiming.h"
 
 namespace chordism::params
 {
@@ -20,9 +19,6 @@ namespace chordism::params
     inline constexpr const char* muteChords   = "muteChords";
     inline constexpr const char* muteScale    = "muteScale";
     inline constexpr const char* testPattern  = "testPattern";
-    inline constexpr const char* port         = "port";
-    inline constexpr const char* portCompensate = "portCompensate";
-    inline constexpr const char* portTrimMs   = "portTrimMs";
 
     // Phase 2 (appended).
     inline constexpr const char* progression  = "progression";
@@ -93,7 +89,7 @@ namespace chordism::params
     inline constexpr const char* melodySwing   = "melodySwing";
     inline constexpr const char* melodySeed    = "melodySeed";
 
-    // Parameters a preset doesn't touch: routing and the test rig (PresetManager).
+    // Parameters a preset doesn't touch: Enable and the test rig (PresetManager).
     bool isPresetParameter (const juce::String& paramId);
 
     // A sequencer pattern as Live shows it: "x" for an active step, "." for a rest, step 1 first.
@@ -113,9 +109,6 @@ namespace chordism::params
         Scale currentScale() const noexcept;
         ChordFxSettings chordFx() const noexcept;
         SmartSettings smart() const noexcept;
-        bool portEnabled() const noexcept { return port->load() > 0.5f; }
-        bool portCompensation() const noexcept { return portCompensate->load() > 0.5f; }
-        double portTrim() const noexcept { return (double) portTrimMs->load(); }
 
     private:
         std::atomic<float>* enable;
@@ -127,9 +120,6 @@ namespace chordism::params
         std::atomic<float>* muteChords;
         std::atomic<float>* muteScale;
         std::atomic<float>* testPattern;
-        std::atomic<float>* port;
-        std::atomic<float>* portCompensate;
-        std::atomic<float>* portTrimMs;
         std::atomic<float>* progression;
         std::atomic<float>* shifterMode;
         std::atomic<float>* testShifter;

@@ -1,10 +1,9 @@
 // Engine tests: InputRouter zones, VoiceTracker ownership, chord output, Chord Editor edits,
-// Progressions, Shifters, the test pattern under a fake transport, port timestamps, the
-// snapshot exchange, and stuck-note fuzzing (PLAN.md §8).
+// Progressions, Shifters, the test pattern under a fake transport, the snapshot exchange, and
+// stuck-note fuzzing (PLAN.md §8).
 #include "TestUtil.h"
 #include "Receiver.h"
 #include "core/engine/ChordismEngine.h"
-#include "core/engine/PortTiming.h"
 #include "core/engine/SnapshotExchange.h"
 #include <algorithm>
 #include <cmath>
@@ -371,40 +370,6 @@ static void testPatternLoop()
     rig.run ({}, block);
     rig.run ({}, block);
     check (rig.engine.getVoices().isEmpty() && rig.rx.clean(), "test pattern off: released, " + rig.rx.describe());
-}
-
-//==============================================================================
-static void testPortTiming()
-{
-    std::cout << "== port timestamps ==\n";
-    // Raw port delay measured in Live 12.4.6 (compensation off), minus one buffer: the fixed
-    // part, which is all a timestamp can remove (PLAN.md §3).
-    const struct { double rate; int buffer; double measuredMs; } runs[] = {
-        { 44100.0, 128, 4.44 }, { 44100.0, 512, 13.24 }, { 44100.0, 1024, 24.889 },
-        { 48000.0, 1024, 22.990 }, { 96000.0, 1024, 12.357 } };
-    bool underEvery = true, close = true;
-    for (const auto& r : runs)
-    {
-        const double fixedMs = r.measuredMs - PortTiming::expectedLateMs (r.rate, r.buffer);
-        const double leadMs = (double) PortTiming { r.rate, true, 0.0 }.leadNs() / 1.0e6;
-        underEvery &= leadMs <= fixedMs;      // never stamped early enough to be clamped
-        close &= fixedMs - leadMs < 0.25;     // and what's left is a fraction of a ms
-        std::cout << "        " << r.rate / 1000.0 << " kHz / " << r.buffer << ": fixed part " << fixedMs
-                  << " ms, lead " << leadMs << " ms, left " << fixedMs - leadMs << " ms\n";
-    }
-    check (underEvery, "the lead is under every measured fixed delay (Live would clamp an earlier stamp)");
-    check (close, "the lead removes all but < 0.25 ms of the fixed delay");
-
-    PortTiming t { 48000.0, true, 0.0 };
-    const int64_t block = 1'000'000'000;
-    check (t.stampNs (block, 48) - t.stampNs (block, 0) == 1'000'000, "48 samples at 48 kHz = 1 ms between stamps");
-    check (block - t.stampNs (block, 0) == (int64_t) (portFixedLatencyMs * 1e6), "stamped earlier by the fixed latency only");
-    check (std::abs (PortTiming::expectedLateMs (44100.0, 1024) - 23.2199) < 0.001, "port records one buffer late (1024 @ 44.1 kHz = 23.22 ms)");
-
-    t.compensate = false;
-    check (t.stampNs (block, 0) == block, "compensation off: stamped at the block time");
-    t.trimMs = 2.0;
-    check (t.stampNs (block, 0) == block + 2'000'000, "a positive trim stamps later");
 }
 
 //==============================================================================
@@ -941,7 +906,6 @@ int main()
     testPatternShifter (3, 333);
     testPatternShifter (4, 2048);
 
-    testPortTiming();
     testSnapshotExchange();
 
     std::cout << "== stuck-note fuzz ==\n";

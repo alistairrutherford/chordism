@@ -11,7 +11,7 @@ env:
 
 jobs:
   macos:
-    name: Build, core tests, auval, pluginval
+    name: Build, core tests, pluginval
     runs-on: macos-14
     steps:
       - name: Checkout project
@@ -35,29 +35,20 @@ jobs:
           xcodebuild -project JUCE/extras/Projucer/Builds/MacOSX/Projucer.xcodeproj \
                      -configuration Release build | tail -3
 
-      - name: Point module paths at the runner's JUCE and regenerate both projects
+      - name: Point the module path at the runner's JUCE and regenerate the project
         run: |
           JMOD="$GITHUB_WORKSPACE/JUCE/modules"
           PROJUCER="JUCE/extras/Projucer/Builds/MacOSX/build/Release/Projucer.app/Contents/MacOS/Projucer"
-          # The committed .jucer files hold the developer machine's module path.
-          for j in repo/Chordism.jucer repo/MidiFX/ChordismMidiFX.jucer; do
-            sed -i '' "s#/Users/alistairrutherford/Development/JUCE/modules#$JMOD#g" "$j"
-            "$PROJUCER" --resave "$j"
-          done
+          # The committed .jucer file holds the developer machine's module path.
+          sed -i '' "s#/Users/alistairrutherford/Development/JUCE/modules#$JMOD#g" repo/Chordism.jucer
+          "$PROJUCER" --resave repo/Chordism.jucer
 
-      - name: Build VST3, AU instrument and Standalone
+      - name: Build VST3 and Standalone
         run: |
           # Without pipefail the step's status is grep's, so a failed build would pass.
           set -o pipefail
           xcodebuild -project repo/Builds/MacOSX/Chordism.xcodeproj \
                      -target "Chordism - All" -configuration Release build | \
-            grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
-
-      - name: Build AU MIDI effect
-        run: |
-          set -o pipefail
-          xcodebuild -project repo/MidiFX/Builds/MacOSX/ChordismMidiFX.xcodeproj \
-                     -target "ChordismMidiFX - All" -configuration Release build | \
             grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
 
       - name: Install pluginval
@@ -67,7 +58,7 @@ jobs:
           unzip -q pluginval.zip -d pluginval
           echo "PLUGINVAL=$GITHUB_WORKSPACE/pluginval/pluginval.app/Contents/MacOS/pluginval" >> "$GITHUB_ENV"
 
-      - name: auval (aumu + aumi) and pluginval (strictness 10)
+      - name: pluginval (strictness 10)
         run: repo/Tests/run_validation.sh
 
       - name: Upload pluginval logs

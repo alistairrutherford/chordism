@@ -113,13 +113,13 @@ def test_chord_effects(live, rig, reference, report, case):
     tempo_ms = 60000.0 / TEMPO
     tol_beats = TOL_MS / tempo_ms
 
-    _configure(live, rig, reference, key, scale, group, compensate=True)
+    _configure(live, rig, reference, key, scale, group)
     _set(live, rig, "Progression", 0, [""] * 9)   # Diatonic
     _set(live, rig, "Test shifter", 0, [""] * 6)  # Off
     _apply(live, rig, DEFAULTS)
     shown = _apply(live, rig, settings)
     try:
-        routing, audio, clip, notes, beats = _record(live, rig, "vst3")
+        routing, audio, clip, notes, beats = _record(live, rig)
     finally:
         _apply(live, rig, DEFAULTS)
 

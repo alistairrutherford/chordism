@@ -39,13 +39,9 @@ namespace chordism
 
     juce::AudioProcessor::BusesProperties ChordismProcessor::makeBuses()
     {
-       #if JucePlugin_IsMidiEffect
-        return {};
-       #else
         // An instrument with a silent stereo output: hosts route MIDI-only instruments more
         // reliably when there's an audio bus.
         return BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true);
-       #endif
     }
 
     ChordismProcessor::ChordismProcessor()
@@ -63,13 +59,11 @@ namespace chordism
     {
         stopTimer();
         uiState.removeListener (this);
-        port.close();   // releases any notes the port's receiver still holds
     }
 
     void ChordismProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     {
         preparedSampleRate.store (sampleRate);
-        preparedBlockSize.store (samplesPerBlock);
         generated.ensureSize (output.capacity * 4);
         engine.requestReset();
     }
@@ -81,26 +75,18 @@ namespace chordism
 
     bool ChordismProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
     {
-       #if JucePlugin_IsMidiEffect
-        juce::ignoreUnused (layouts);
-        return true;
-       #else
         const auto out = layouts.getMainOutputChannelSet();
         return layouts.getMainInputChannelSet().isDisabled()
             && (out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo());
-       #endif
     }
 
-    Transport ChordismProcessor::readTransport (int64_t& blockNs)
+    Transport ChordismProcessor::readTransport()
     {
         Transport t = lastTransport;
         t.sampleRate = getSampleRate() > 0.0 ? getSampleRate() : preparedSampleRate.load();
         t.playing = false;
         t.looping = false;
         t.hasBarStart = false;
-
-        blockNs = VirtualMidiOut::nowNs();
-        bool hostClock = false;
 
         if (auto* ph = getPlayHead())
         {
@@ -128,18 +114,8 @@ namespace chordism
                     t.hasBarStart = true;
                     t.barStartPpq = *bar;
                 }
-
-                // The port's timestamps use the host's time for this block when it's on the mach
-                // clock (within 200 ms of now), else the time of processing.
-                if (auto h = pos->getHostTimeNs(); h.hasValue() && std::llabs ((int64_t) *h - blockNs) < 200'000'000)
-                {
-                    blockNs = (int64_t) *h;
-                    hostClock = true;
-                }
             }
         }
-
-        usingHostClock.store (hostClock, std::memory_order_relaxed);
         return t;
     }
 
@@ -159,8 +135,7 @@ namespace chordism
         buffer.clear();
         const int numSamples = buffer.getNumSamples();
 
-        int64_t blockNs = 0;
-        const Transport transport = readTransport (blockNs);
+        const Transport transport = readTransport();
 
         // The editor snapshot first: a state restore publishes it after setting the parameters,
         // so reading the parameters second never pairs restored edits with the old group.
@@ -203,15 +178,8 @@ namespace chordism
         engine.process (settings, edits, transport, input.begin(), input.size(), numSamples, output);
         recorder.record (transport, numSamples, output.begin(), output.size());
 
-        const bool toPort = port.isOpen() && snapshot.portEnabled();
-        const PortTiming timing { transport.sampleRate, snapshot.portCompensation(), snapshot.portTrim() };
-
         for (const auto& e : output)
-        {
             generated.addEvent (e.data, e.size, e.sample);
-            if (toPort)
-                port.push (e.data, e.size, timing.stampNs (blockNs, e.sample));
-        }
 
         // Copy rather than swap: swapping would hand `generated` the host's (possibly small)
         // buffer, and the next block would allocate.
@@ -286,43 +254,12 @@ namespace chordism
         chordEditor.sync (snapshot.chordGroup(), engine.getEditsDiscarded(), engine.getDiscardedVersion());
         if (const auto v = chordEditor.getVersion(); v != notifiedEditsVersion.exchange (v))
             notifyStateChanged();
-
-        const bool want = snapshot.portEnabled();
-        if (want && ! port.isOpen() && port.getLastError() == 0)
-        {
-            port.open (savedPortIndex);
-            if (port.isOpen())
-                savedPortIndex = port.getIndex();
-        }
-        else if (! want && port.isOpen())
-        {
-            savedPortIndex = port.getIndex();
-            port.close();
-        }
     }
 
     void ChordismProcessor::notifyStateChanged()
     {
         if (! restoringState)
             updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
-    }
-
-    juce::String ChordismProcessor::getPortStatus() const
-    {
-        if (! snapshot.portEnabled())
-            return "off";
-        if (! port.isOpen())
-            return port.getLastError() != 0 ? "error " + juce::String (port.getLastError()) : juce::String ("opening...");
-
-        // Live records port input one buffer late; only the fixed part is compensated (§3).
-        const double sr = preparedSampleRate.load();
-        const int bs = preparedBlockSize.load();
-        const PortTiming t { sr, snapshot.portCompensation(), snapshot.portTrim() };
-        return port.getName() + "  (" + juce::String ((int) port.getNumSent()) + " sent, stamped "
-             + juce::String ((double) t.leadNs() / 1.0e6, 2) + " ms early, "
-             + (usingHostClock.load() ? "host clock" : "processing clock") + "; Live records it 1 buffer late = "
-             + juce::String (PortTiming::expectedLateMs (sr, bs), 1) + " ms at " + juce::String (bs) + " @ "
-             + juce::String (sr / 1000.0, 1) + " kHz)";
     }
 
     //==========================================================================
@@ -481,7 +418,6 @@ namespace chordism
         auto tree = state.copyState();
         tree.appendChild (chordEditor.copyTree(), nullptr);
         tree.appendChild (uiState.createCopy(), nullptr);
-        tree.setProperty ("portIndex", port.isOpen() ? port.getIndex() : savedPortIndex, nullptr);
         tree.setProperty ("program", currentProgram.load(), nullptr);
         tree.setProperty ("presetName", presetName, nullptr);
         tree.setProperty ("presetCategory", presetCategory, nullptr);
@@ -497,7 +433,6 @@ namespace chordism
             return;
 
         auto tree = juce::ValueTree::fromXml (*xml);
-        savedPortIndex = tree.getProperty ("portIndex", 0);
         currentProgram = juce::jlimit (0, getNumPrograms() - 1, (int) tree.getProperty ("program", 0));
         presetName = tree.getProperty ("presetName", presetName).toString();
         presetCategory = tree.getProperty ("presetCategory", presetCategory).toString();

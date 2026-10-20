@@ -4,10 +4,10 @@
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.1.0"
               companyName="Alistair Rutherford" companyWebsite="https://github.com/alistairrutherford/chordism"
               bundleIdentifier="com.alistairrutherford.chordism"
-              pluginFormats="buildAU,buildVST3,buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn,pluginProducesMidiOut"
+              pluginFormats="buildVST3,buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn,pluginProducesMidiOut"
               pluginName="Chordism" pluginDesc="One key plays a chord: a MIDI chord generator"
               pluginManufacturer="Alistair Rutherford" pluginManufacturerCode="ARut"
-              pluginCode="Cdsm" pluginAUMainType="'aumu'" pluginVST3Category="Instrument,Tools"
+              pluginCode="Cdsm" pluginVST3Category="Instrument,Tools"
               cppLanguageStandard="17">
   <MAINGROUP id="csMain" name="Chordism">
     <GROUP id="csSrc0" name="Source">
@@ -27,7 +27,6 @@
         <FILE id="csF006" name="InputRouter.h" compile="0" resource="0" file="Source/core/engine/InputRouter.h"/>
         <FILE id="csF007" name="VoiceTracker.h" compile="0" resource="0" file="Source/core/engine/VoiceTracker.h"/>
         <FILE id="csF008" name="TestPattern.h" compile="0" resource="0" file="Source/core/engine/TestPattern.h"/>
-        <FILE id="csF009" name="PortTiming.h" compile="0" resource="0" file="Source/core/engine/PortTiming.h"/>
         <FILE id="csF010" name="ChordismEngine.h" compile="0" resource="0" file="Source/core/engine/ChordismEngine.h"/>
         <FILE id="csF023" name="Shifters.h" compile="0" resource="0" file="Source/core/engine/Shifters.h"/>
         <FILE id="csF024" name="SnapshotExchange.h" compile="0" resource="0" file="Source/core/engine/SnapshotExchange.h"/>
@@ -56,8 +55,6 @@
         <FILE id="csF012" name="ChordismProcessor.cpp" compile="1" resource="0" file="Source/plugin/ChordismProcessor.cpp"/>
         <FILE id="csF013" name="Parameters.h" compile="0" resource="0" file="Source/plugin/Parameters.h"/>
         <FILE id="csF014" name="Parameters.cpp" compile="1" resource="0" file="Source/plugin/Parameters.cpp"/>
-        <FILE id="csF015" name="VirtualMidiOut.h" compile="0" resource="0" file="Source/plugin/VirtualMidiOut.h"/>
-        <FILE id="csF016" name="VirtualMidiOut.cpp" compile="1" resource="0" file="Source/plugin/VirtualMidiOut.cpp"/>
         <FILE id="csF025" name="ChordEditorState.h" compile="0" resource="0" file="Source/plugin/ChordEditorState.h"/>
         <FILE id="csF026" name="ChordEditorState.cpp" compile="1" resource="0" file="Source/plugin/ChordEditorState.cpp"/>
         <FILE id="csF055" name="PresetManager.h" compile="0" resource="0" file="Source/plugin/PresetManager.h"/>
@@ -101,7 +98,7 @@
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0" JUCE_WEB_BROWSER="0"
                JUCE_USE_CURL="0"/>
   <EXPORTFORMATS>
-    <XCODE_MAC targetFolder="Builds/MacOSX" extraFrameworks="CoreMIDI">
+    <XCODE_MAC targetFolder="Builds/MacOSX">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="Chordism" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="Chordism" macOSDeploymentTarget="12.0" osxArchitecture="Standard"/>

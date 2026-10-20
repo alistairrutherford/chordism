@@ -1,9 +1,8 @@
 // The plug-in: a thin JUCE adapter around ChordismEngine (Source/core/engine).
 //
-// One source, three builds (PLAN.md §3): VST3 + AU instrument + Standalone from
-// Chordism.jucer, and the AU MIDI effect (`aumi`, Logic) from MidiFX/ChordismMidiFX.jucer,
-// where JucePlugin_IsMidiEffect is 1. Generated MIDI goes to the host's MIDI output and, when
-// "Virtual port" is on, to the CoreMIDI port "Chordism Out <n>".
+// Two builds from Chordism.jucer (PLAN.md §3): the VST3 instrument and the Standalone app.
+// Generated MIDI goes to the host's MIDI output (in Live: another track's "MIDI From"). The AU
+// builds and the CoreMIDI virtual port were removed on 2026-10-20.
 //
 // Phase 6: an ExportRecorder keeps what Chordism sends while the host plays (Export drag-out);
 // MIDI files import as chords (ChordImporter); presets (PresetManager) load on the message
@@ -13,14 +12,12 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../core/engine/ChordismEngine.h"
-#include "../core/engine/PortTiming.h"
 #include "../core/engine/SnapshotExchange.h"
 #include "../core/midiio/ChordImporter.h"
 #include "../core/midiio/ExportRecorder.h"
 #include "ChordEditorState.h"
 #include "Parameters.h"
 #include "PresetManager.h"
-#include "VirtualMidiOut.h"
 #include <atomic>
 
 namespace chordism
@@ -62,7 +59,7 @@ namespace chordism
         const juce::String getName() const override { return JucePlugin_Name; }
         bool acceptsMidi() const override { return true; }
         bool producesMidi() const override { return true; }
-        bool isMidiEffect() const override { return JucePlugin_IsMidiEffect != 0; }
+        bool isMidiEffect() const override { return false; }
         double getTailLengthSeconds() const override { return 0.0; }
 
         // The factory presets (Init first).
@@ -119,12 +116,9 @@ namespace chordism
         static juce::File testTakeFile();
 
         // Status for the editor and tests (written by the audio thread).
-        juce::String getPortStatus() const;
         std::atomic<int> lastChordSlot { -1 };
         std::atomic<int> soundingNotes { 0 };
         std::atomic<bool> transportPlaying { false };
-        std::atomic<bool> usingHostClock { false };
-        uint32_t getPortEndpoint() const noexcept { return port.getEndpoint(); }
 
     private:
         using NoteBits = std::array<std::atomic<uint64_t>, 2>;
@@ -144,7 +138,7 @@ namespace chordism
         static BusesProperties makeBuses();
         void timerCallback() override;
         void run (juce::AudioBuffer<float>&, juce::MidiBuffer&, bool bypassed);
-        Transport readTransport (int64_t& blockNs);
+        Transport readTransport();
 
         params::Snapshot snapshot;
         ChordismEngine engine;
@@ -157,10 +151,7 @@ namespace chordism
         BlockEvents output;
         juce::MidiBuffer generated;
 
-        VirtualMidiOut port;
-        int savedPortIndex = 0;
         std::atomic<double> preparedSampleRate { 44100.0 };
-        std::atomic<int> preparedBlockSize { 512 };
         Transport lastTransport;
         SnapshotExchange<ChordDisplay> display;
         ChordDisplay lastDisplay;

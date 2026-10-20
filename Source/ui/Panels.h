@@ -9,8 +9,8 @@
 //                  buttons); the Smart Scale's effects: Stack, Hold, Velocity, Step Sequencer
 //                  and its steps
 //   SetupPanel     everything else, as an overlay: Split, the custom progression, the five
-//                  shifters' targets, the virtual port, the test pattern (LiveBridge), and the
-//                  preferences (the QWERTY layout)
+//                  shifters' targets, the test pattern (LiveBridge), and the preferences (the
+//                  QWERTY layout)
 #pragma once
 
 #include "Keyboards.h"
@@ -100,14 +100,13 @@ namespace chordism::ui
     {
     public:
         SetupPanel (ChordismProcessor&, Bindings&, std::function<void()> close);
-        void refresh();
         void paint (juce::Graphics&) override;
         void resized() override;
 
     private:
         ChordismProcessor& processor;
         juce::TextButton closeButton { "Done" };
-        juce::Label heading, portStatus, prefsCaption, qwertyCaption;
+        juce::Label heading, prefsCaption, qwertyCaption;
         juce::ComboBox qwerty;            // the QWERTY layout preference (ChordismEditor)
         ParamGrid left, shifters, right;
     };

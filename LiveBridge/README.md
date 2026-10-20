@@ -17,8 +17,7 @@ pytest / MCP server / CLI  ──TCP 127.0.0.1:9871──▶  ChordismBridge Rem
 | `livebridge/livelog.py` | Sample rate and buffer size, read from Live's `Log.txt`. |
 | `livebridge/mcp_server.py` | MCP server (stdio) with the same commands as tools. Registered in the repo's `.mcp.json` as `live-bridge`. |
 | `tests/test_offline.py` | Protocol and commands against a fake LOM, and the timing math. No Live needed. |
-| `tests/test_timing_live.py` | The Phase 0/1 timing check (PLAN.md §3), against a running Live. |
-| `tests/test_phase1_live.py` | The Phase 1 exit check: Chordism's chord-zone chords recorded through VST3 MIDI From and the virtual port, compared with the music21 reference, plus timing. |
+| `tests/test_phase1_live.py` | The Phase 1 exit check: Chordism's chord-zone chords recorded through VST3 MIDI From, compared with the music21 reference, plus timing. |
 | `scripts/restart_live.sh` | Quits Live and reopens it with a set, then waits for the bridge. |
 
 ## Setup
@@ -63,82 +62,29 @@ uv run python -m livebridge set_tempo '{"bpm": 97}'
 
 ```sh
 uv run pytest tests/test_offline.py        # no Live needed
-uv run pytest tests/test_timing_live.py    # Live running with the control surface selected
-uv run pytest tests/test_phase1_live.py    # Phase 1: chords + timing, VST3 and port routes
+uv run pytest tests/test_phase1_live.py    # Phase 1: chords + timing (VST3 MIDI From); Live running with the control surface selected
 uv run pytest tests/test_phase2_live.py    # Phase 2: progressions and shifters (VST3)
 uv run pytest tests/test_phase3_live.py    # Phase 3: strum, arp, repeat + velocity (VST3)
 uv run pytest tests/test_phase4_live.py    # Phase 4: Smart Scale mappings and patterns (VST3)
 uv run pytest tests/test_phase5_live.py -k prepare   # Phase 5: state restore (two stages, see the file)
 uv run pytest tests/test_phase6_live.py    # Phase 6: Melody seed, presets (Program), Export file + Live's import
-CHORDISM_FORMAT=au uv run pytest tests/test_phase1_live.py    # the AU instrument (port route only)
 ```
 
 ### The Phase 1 check (`test_phase1_live.py`)
 
-Builds tracks **Chordism P1 Src** (the Chordism VST3, or **Chordism P1 Src AU**) and **Chordism
-P1 Rec** (Drift). It sets Chordism's host parameters (Key, Scale, Chord Group, Split, Chord
-Octave, Test pattern, port settings) through the bridge, records 4 bars, and checks every beat's
-chord against `Tests/fixtures/theory_reference.json` (music21). The Test pattern presses chord
-key C, D, E… B, C… one per beat, so beat *b* plays slot *b* mod 7. Cases: C major Triads and
-E♭ Dorian Sevenths.
+Builds tracks **Chordism P1 Src** (the Chordism VST3) and **Chordism P1 Rec** (Drift, MIDI From
+= Src track / Chordism). It sets Chordism's host parameters (Key, Scale, Chord Group, Split,
+Chord Octave, Test pattern) through the bridge, records 4 bars, and checks every beat's chord
+against `Tests/fixtures/theory_reference.json` (music21), and every note at 0.000 ms (VST3 MIDI
+From is sample-accurate). The Test pattern presses chord key C, D, E… B, C… one per beat, so
+beat *b* plays slot *b* mod 7. Cases: C major Triads and E♭ Dorian Sevenths.
 
-- `vst3` route: every chord right and every note at 0.000 ms.
-- `port` route: every chord right, and the notes one audio buffer late (+ < 0.5 ms, tight
-  spread). Live records port input a buffer late, and only the fixed ~1.6 ms beyond that can
-  be stamped away (PLAN.md §3).
-- `test_port_raw_delay`: compensation off; reports the raw delay as buffer + fixed part.
-- `test_port_trim_sweep` (set `CHORDISM_TRIM_SWEEP=-1,-1.6,-2,-3`): one take per Port trim, to
-  see where Live starts clamping early stamps.
-
-Other instances' virtual ports are switched off first, so `Chordism Out n` is unambiguous.
+The AU build and its CoreMIDI virtual port (with the port-timing tests, `test_timing_live.py`
+and the Phase 0 spike) were removed on 2026-10-20; their results are in PLAN.md §3.
 
 The live tests skip when the bridge doesn't answer. The timing report is printed at the end
 of the run (with or without `-s`). Each run is also saved as JSON in `reports/` (gitignored),
 with the whole clip.
-
-### The timing check (`test_timing_live.py`)
-
-1. Finds or creates track **Chordism Src** with the Chordism VST3, and **Chordism Rec** with
-   an instrument (Drift). Existing tracks are reused, so the same set can be run again.
-2. Switches on the **Test pattern** parameter (I IV V vi, a chord on every beat). Turns off
-   arrangement loop, overdub and record quantization, and disarms Src.
-3. Route `vst3`: Rec's MIDI From = Src track / the plug-in's own channel. Route `port`: Rec's
-   MIDI From = the CoreMIDI virtual port (`<plugin> Out n`).
-4. Arms Rec. Plays 1.5 s first and samples Rec's output meter (a routing sanity check, in the report).
-5. Records 4 bars from bar 1 into the arrangement, then reads the clip with `get_notes_extended`.
-6. Prints each note's beat, time, and offset (positive = late) in beats, ms and samples, with
-   the mean, median, min, max, spread and missing beats. It also shows the mean offset as whole
-   buffers plus a remainder (`mean = 1.53 x buffer (128) = 1 buffer(s) + 68.0 samples`), so a
-   delay that scales with the buffer size is easy to spot.
-
-The sample rate and buffer size come from Live's `Log.txt`
-(`~/Library/Preferences/Ableton/Live <version>/Log.txt`). Live writes an `Audio In Out:` block
-there at startup and whenever Settings → Audio changes, and the last block is the current setting.
-They're in the report header and in the JSON (`audio`). If the log has no such block, the report
-says so and leaves out the samples.
-
-The test fails if nothing was recorded, or a note is more than 1/16 from its beat. It only
-measures; set `CHORDISM_MAX_OFFSET_MS` to make it also fail above a limit.
-
-| Variable | Default | |
-|---|---|---|
-| `CHORDISM_PLUGIN` | `Chordism Spike` | Name in Live's browser. `Chordism` for the Phase 1 plug-in (`test_phase1_live.py` defaults to it). |
-| `CHORDISM_FORMAT` | `vst3` | `vst3`, `au` or `vst` |
-| `CHORDISM_TEST_PARAM` | `Test pattern` | Host parameter that switches the pattern on |
-| `CHORDISM_PORT` | `<plugin> Out` | Virtual port name prefix |
-| `CHORDISM_INSTRUMENT` | `Drift` | Live instrument for the Rec track |
-| `CHORDISM_TEMPOS` | `120` | e.g. `120,97,174` |
-| `CHORDISM_BARS` | `4` | |
-| `CHORDISM_MAX_OFFSET_MS` | none | |
-
-**The Phase 0 spike has no host parameters**: Test pattern is a button in its window, so the bridge
-can't switch it on. With the spike, run the test once to create the tracks, open Chordism Spike on
-track *Chordism Src*, click **Test pattern** on, and run again. Save the set so it stays on.
-The Phase 1 plug-in (`Chordism`) has *Test pattern* as a host parameter, so no hand step is needed.
-
-**The port route** needs the port's **Track** switch on in Settings → Link, Tempo & MIDI → MIDI
-Ports (Input: `Chordism Spike Out 1`). Without it the port test is skipped, and the message
-lists the inputs Live offers.
 
 ## Restarting Live (new plug-in builds)
 

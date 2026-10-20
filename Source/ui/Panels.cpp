@@ -63,7 +63,7 @@ namespace chordism::ui
           enable (b, params::enable, "On"), key (b, params::key), scale (b, params::scale), progression (b, params::progression),
           group (b, params::chordGroup), mapping (b, params::mapping), shifterMode (b, params::shifterMode, "Shifters")
     {
-        logo.setTooltip ("Setup: split, custom progression, shifter targets, virtual port, test pattern");
+        logo.setTooltip ("Setup: split, custom progression, shifter targets, test pattern, preferences");
         logo.onClick = std::move (openSetup);
         logo.setColour (juce::TextButton::buttonColourId, colours::background);
         logo.setColour (juce::TextButton::textColourOffId, colours::text);
@@ -317,11 +317,6 @@ namespace chordism::ui
         }
         addAndMakeVisible (shifters);
 
-        right.addSection ("Virtual port (AU in Live)");
-        right.add (params::port);
-        right.add (params::portCompensate);
-        right.add (params::portTrimMs);
-        right.addGap();
         right.addSection ("Test pattern (LiveBridge)");
         right.add (params::testPattern);
         right.add (params::testShifter);
@@ -339,14 +334,7 @@ namespace chordism::ui
         qwerty.onChange = [this] { processor.uiState.setProperty ("qwerty", qwerty.getSelectedId(), nullptr); };
         qwerty.setTooltip ("Play Chordism from the computer keyboard while its window has the focus");
         addAndMakeVisible (qwerty);
-
-        portStatus.setFont (font (11.0f));
-        portStatus.setColour (juce::Label::textColourId, colours::dim);
-        portStatus.setJustificationType (juce::Justification::topLeft);
-        addAndMakeVisible (portStatus);
     }
-
-    void SetupPanel::refresh() { portStatus.setText ("Port: " + processor.getPortStatus(), juce::dontSendNotification); }
 
     void SetupPanel::paint (juce::Graphics& g)
     {
@@ -367,11 +355,10 @@ namespace chordism::ui
         r.removeFromRight (8);
         left.setBounds (a);
         shifters.setBounds (r);
-        right.setBounds (c.removeFromTop (2 * ParamGrid::sectionHeight + 4 * ParamGrid::rowHeight));
+        right.setBounds (c.removeFromTop (ParamGrid::sectionHeight + 2 * ParamGrid::rowHeight));
         prefsCaption.setBounds (c.removeFromTop (ParamGrid::sectionHeight).reduced (4, 0));
         auto q = c.removeFromTop (ParamGrid::rowHeight).reduced (4, 2);
         qwertyCaption.setBounds (q.removeFromTop (14));
         qwerty.setBounds (q);
-        portStatus.setBounds (c.reduced (4, 6));
     }
 }

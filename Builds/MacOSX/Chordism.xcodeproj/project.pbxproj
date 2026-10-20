@@ -14,7 +14,6 @@
 			);
 			dependencies = (
 				D9EAF56C0C8EFD44B97C7F9A,
-				82DD0821A0592195DCA9C1D1,
 				D35E8BFB72EFF76868E1C07C,
 				C7CF8E6FF674D84B9EA46A4D,
 				E92EAF4A115BD9E3A2494F19,
@@ -30,12 +29,8 @@
 		0EDBBBED6C9C4448E5B83618 /* RecentFilesMenuTemplate.nib */ = {isa = PBXBuildFile; fileRef = 239195DE647C4F8B2F7D4C9D; };
 		130D6BFF08B987B5B2FAD941 /* include_juce_audio_devices.mm */ = {isa = PBXBuildFile; fileRef = 9DFA843E3A6435422D0BBA60; };
 		14DC73DBA52A04430B18BC99 /* CoreAudio.framework */ = {isa = PBXBuildFile; fileRef = 28E2B426EC6B8F908A14D441; };
-		168410619A7BAB78B0DC3EDD /* AudioUnit.framework */ = {isa = PBXBuildFile; fileRef = B9312B1D3245D813369140E1; };
 		1B3EBD3FC9B83F2E08A0A021 /* include_juce_graphics_Sheenbidi.c */ = {isa = PBXBuildFile; fileRef = A002AB1D1C0F2A1CEE94F295; };
 		1BF5CF49614A9C7A1FF68C43 /* Accelerate.framework */ = {isa = PBXBuildFile; fileRef = 2CBD6EC6F13D892A95252D40; };
-		204C4362AB16782AF1DF7BB7 /* include_juce_audio_plugin_client_AU_1.mm */ = {isa = PBXBuildFile; fileRef = C51F3E1B356A56D67C902EA0; };
-		22ED3FCD9790CE91C0D28E8B /* VirtualMidiOut.cpp */ = {isa = PBXBuildFile; fileRef = 855427F97926F05C9F1F0CD7; };
-		2598BA2BF5119E7585E840E7 /* include_juce_audio_plugin_client_AU_2.mm */ = {isa = PBXBuildFile; fileRef = 9673113CB15F07A0147AC3F0; };
 		2F00388D4BCD04E9A66AA4F7 /* include_juce_graphics.mm */ = {isa = PBXBuildFile; fileRef = 57673BD37533A1B5E624F8FD; };
 		3B23CD413F3B50D840F2391C /* include_juce_gui_basics_3.cpp */ = {isa = PBXBuildFile; fileRef = E3770076478833DD14D4969D; };
 		3B75CF940C59C0EF681E0FEC /* Shared Code */ = {isa = PBXBuildFile; fileRef = 335689F67F21C497D948A37E; };
@@ -80,7 +75,6 @@
 		D16AEE1F4B94024945CB603E /* include_juce_gui_basics_5.cpp */ = {isa = PBXBuildFile; fileRef = 6EFB40E2B1DB2939FACEFFD7; };
 		D3ED240B033DDBBE29B32D79 /* PresetManager.cpp */ = {isa = PBXBuildFile; fileRef = D51ACA8A4A48108EE017AA99; };
 		D7147FFC5D39A8508806C090 /* ChordismEditor.cpp */ = {isa = PBXBuildFile; fileRef = 72B7B2ACBF9844A17CA2B72F; };
-		E33879701486FEF4B5378BE2 /* AU */ = {isa = PBXBuildFile; fileRef = 8E8A3C2005B7BC97302E2E98; };
 		E62943C447F3AB7E03BC9DDB /* include_juce_audio_processors_headless.mm */ = {isa = PBXBuildFile; fileRef = 7591537A88303D0A731E98BD; };
 		EAD6816A3F4294C99B2ECA90 /* QuartzCore.framework */ = {isa = PBXBuildFile; fileRef = 00BCC0E03797EE8E7744EABF; };
 		ECB6A1ECF5E6EF6EA8F19DEC /* include_juce_graphics_Harfbuzz.cpp */ = {isa = PBXBuildFile; fileRef = D011C5A2462CA5BD4B18A0CB; };
@@ -96,11 +90,9 @@
 		077392D46A8909E43C5A4BA0 /* Stack.h */ /* Stack.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Stack.h; path = ../../Source/core/engine/Stack.h; sourceTree = SOURCE_ROOT; };
 		0E012DE27A1BA6D5817DB521 /* MidiFile.h */ /* MidiFile.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MidiFile.h; path = ../../Source/core/midiio/MidiFile.h; sourceTree = SOURCE_ROOT; };
 		0E565DAFD94609E14E050BE6 /* Foundation.framework */ /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
-		0E7670409012B569B93D7A73 /* PortTiming.h */ /* PortTiming.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PortTiming.h; path = ../../Source/core/engine/PortTiming.h; sourceTree = SOURCE_ROOT; };
 		0EDA42932BA08DDE6532B9E8 /* juce_core */ /* juce_core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_core; path = /Users/alistairrutherford/Development/JUCE/modules/juce_core; sourceTree = "<absolute>"; };
 		16FECFA3207AD39CA5F47906 /* include_juce_audio_processors.mm */ /* include_juce_audio_processors.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_processors.mm; path = ../../JuceLibraryCode/include_juce_audio_processors.mm; sourceTree = SOURCE_ROOT; };
 		187537D4E802955EDFE16752 /* ChordEditorState.cpp */ /* ChordEditorState.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ChordEditorState.cpp; path = ../../Source/plugin/ChordEditorState.cpp; sourceTree = SOURCE_ROOT; };
-		18CDA7F23F6935D9F1751AA9 /* Info-AU.plist */ /* Info-AU.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-AU.plist"; path = "Info-AU.plist"; sourceTree = SOURCE_ROOT; };
 		196FF0C5E35296D07F75AD59 /* PatternEngine.h */ /* PatternEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PatternEngine.h; path = ../../Source/core/engine/PatternEngine.h; sourceTree = SOURCE_ROOT; };
 		1C810CDCBB417FC02A557EC6 /* DiscRecording.framework */ /* DiscRecording.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DiscRecording.framework; path = System/Library/Frameworks/DiscRecording.framework; sourceTree = SDKROOT; };
 		20B56279DB0A4CBC2342BEF7 /* Scales.h */ /* Scales.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Scales.h; path = ../../Source/core/theory/Scales.h; sourceTree = SOURCE_ROOT; };
@@ -135,7 +127,6 @@
 		5EEE3CFF7A4915CA3665AED2 /* include_juce_gui_extra.mm */ /* include_juce_gui_extra.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_gui_extra.mm; path = ../../JuceLibraryCode/include_juce_gui_extra.mm; sourceTree = SOURCE_ROOT; };
 		6002F206AC0D9145554B5D85 /* include_juce_audio_plugin_client_Standalone.cpp */ /* include_juce_audio_plugin_client_Standalone.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = include_juce_audio_plugin_client_Standalone.cpp; path = ../../JuceLibraryCode/include_juce_audio_plugin_client_Standalone.cpp; sourceTree = SOURCE_ROOT; };
 		6228818E97A09B12FAEEFA26 /* MidiEvents.h */ /* MidiEvents.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MidiEvents.h; path = ../../Source/core/engine/MidiEvents.h; sourceTree = SOURCE_ROOT; };
-		62987939A551CCD372C323DB /* VirtualMidiOut.h */ /* VirtualMidiOut.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = VirtualMidiOut.h; path = ../../Source/plugin/VirtualMidiOut.h; sourceTree = SOURCE_ROOT; };
 		648F5E5B5CDE1BE1D9E87B85 /* Repeat.h */ /* Repeat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Repeat.h; path = ../../Source/core/engine/Repeat.h; sourceTree = SOURCE_ROOT; };
 		68B335119152541EA01B02AB /* WebKit.framework */ /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		69A862EC38E585A46F1D152E /* include_juce_audio_formats.mm */ /* include_juce_audio_formats.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_formats.mm; path = ../../JuceLibraryCode/include_juce_audio_formats.mm; sourceTree = SOURCE_ROOT; };
@@ -156,19 +147,16 @@
 		8178E3D4DF45D7B5B7058A91 /* VST3 Manifest Helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = juce_vst3_helper; sourceTree = BUILT_PRODUCTS_DIR; };
 		8510BAABE4D45EA197E520EB /* Theme.cpp */ /* Theme.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Theme.cpp; path = ../../Source/ui/Theme.cpp; sourceTree = SOURCE_ROOT; };
 		853D60C0A3BF493735A46EC9 /* VelocityAlgorithm.h */ /* VelocityAlgorithm.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = VelocityAlgorithm.h; path = ../../Source/core/engine/VelocityAlgorithm.h; sourceTree = SOURCE_ROOT; };
-		855427F97926F05C9F1F0CD7 /* VirtualMidiOut.cpp */ /* VirtualMidiOut.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = VirtualMidiOut.cpp; path = ../../Source/plugin/VirtualMidiOut.cpp; sourceTree = SOURCE_ROOT; };
 		85F9547E6765BE4CFFB5C478 /* Theme.h */ /* Theme.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Theme.h; path = ../../Source/ui/Theme.h; sourceTree = SOURCE_ROOT; };
 		863AF11B83F1CACB0ED8DADD /* ChordImporter.h */ /* ChordImporter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ChordImporter.h; path = ../../Source/core/midiio/ChordImporter.h; sourceTree = SOURCE_ROOT; };
 		871B9AABD2D52A3798973494 /* Panels.cpp */ /* Panels.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Panels.cpp; path = ../../Source/ui/Panels.cpp; sourceTree = SOURCE_ROOT; };
 		88E5DE73464FA90546A7D0BC /* include_juce_audio_processors_headless_lv2_libs.cpp */ /* include_juce_audio_processors_headless_lv2_libs.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = include_juce_audio_processors_headless_lv2_libs.cpp; path = ../../JuceLibraryCode/include_juce_audio_processors_headless_lv2_libs.cpp; sourceTree = SOURCE_ROOT; };
 		8A8A978335DCEF109F4A9B52 /* CoreAudioKit.framework */ /* CoreAudioKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudioKit.framework; path = System/Library/Frameworks/CoreAudioKit.framework; sourceTree = SDKROOT; };
 		8B5F521282D5F34077FEA592 /* StepSequencer.h */ /* StepSequencer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = StepSequencer.h; path = ../../Source/core/engine/StepSequencer.h; sourceTree = SOURCE_ROOT; };
-		8E8A3C2005B7BC97302E2E98 /* AU */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Chordism.component; sourceTree = BUILT_PRODUCTS_DIR; };
 		90636D36B74D31EACDDAFF3F /* Melody.h */ /* Melody.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Melody.h; path = ../../Source/core/engine/Melody.h; sourceTree = SOURCE_ROOT; };
 		9079B319242C72E4D53C7F50 /* AudioToolbox.framework */ /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		94008CF829EA82B6AFF642C6 /* VST3 */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Chordism.vst3; sourceTree = BUILT_PRODUCTS_DIR; };
 		964D7DE3DD112F1B9E9CDA24 /* include_juce_gui_basics_4.cpp */ /* include_juce_gui_basics_4.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = include_juce_gui_basics_4.cpp; path = ../../JuceLibraryCode/include_juce_gui_basics_4.cpp; sourceTree = SOURCE_ROOT; };
-		9673113CB15F07A0147AC3F0 /* include_juce_audio_plugin_client_AU_2.mm */ /* include_juce_audio_plugin_client_AU_2.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_plugin_client_AU_2.mm; path = ../../JuceLibraryCode/include_juce_audio_plugin_client_AU_2.mm; sourceTree = SOURCE_ROOT; };
 		9956DC614CCCF7947F45CA53 /* Arp.h */ /* Arp.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Arp.h; path = ../../Source/core/engine/Arp.h; sourceTree = SOURCE_ROOT; };
 		9AF2B7D635E1BF630F5C76EE /* include_juce_audio_plugin_client_VST3.mm */ /* include_juce_audio_plugin_client_VST3.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_plugin_client_VST3.mm; path = ../../JuceLibraryCode/include_juce_audio_plugin_client_VST3.mm; sourceTree = SOURCE_ROOT; };
 		9D145DB1373489E74E03150A /* PresetManager.h */ /* PresetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PresetManager.h; path = ../../Source/plugin/PresetManager.h; sourceTree = SOURCE_ROOT; };
@@ -184,10 +172,8 @@
 		B145106D08677A2695264AED /* ChordismEditor.h */ /* ChordismEditor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ChordismEditor.h; path = ../../Source/ui/ChordismEditor.h; sourceTree = SOURCE_ROOT; };
 		B165883978381829AAF61737 /* FactoryPresets.cpp */ /* FactoryPresets.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = FactoryPresets.cpp; path = ../../Source/plugin/FactoryPresets.cpp; sourceTree = SOURCE_ROOT; };
 		B731E8149A6D319A063790BE /* PresetBar.h */ /* PresetBar.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PresetBar.h; path = ../../Source/ui/PresetBar.h; sourceTree = SOURCE_ROOT; };
-		B9312B1D3245D813369140E1 /* AudioUnit.framework */ /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = System/Library/Frameworks/AudioUnit.framework; sourceTree = SDKROOT; };
 		BF3F14A1FE4C9DEC39CF2C31 /* Info-Standalone_Plugin.plist */ /* Info-Standalone_Plugin.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-Standalone_Plugin.plist"; path = "Info-Standalone_Plugin.plist"; sourceTree = SOURCE_ROOT; };
 		C3AF0FFD8F003B42E32FA20F /* Progressions.h */ /* Progressions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Progressions.h; path = ../../Source/core/theory/Progressions.h; sourceTree = SOURCE_ROOT; };
-		C51F3E1B356A56D67C902EA0 /* include_juce_audio_plugin_client_AU_1.mm */ /* include_juce_audio_plugin_client_AU_1.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_plugin_client_AU_1.mm; path = ../../JuceLibraryCode/include_juce_audio_plugin_client_AU_1.mm; sourceTree = SOURCE_ROOT; };
 		C631F810C5891688BE27A05C /* ChordEditor.h */ /* ChordEditor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ChordEditor.h; path = ../../Source/core/theory/ChordEditor.h; sourceTree = SOURCE_ROOT; };
 		C7C23E225ACA9EAF0B9F4FEA /* Keyboards.h */ /* Keyboards.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Keyboards.h; path = ../../Source/ui/Keyboards.h; sourceTree = SOURCE_ROOT; };
 		C8609DAD99B4AA48B3F6968B /* Keyboards.cpp */ /* Keyboards.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Keyboards.cpp; path = ../../Source/ui/Keyboards.cpp; sourceTree = SOURCE_ROOT; };
@@ -223,28 +209,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1BF5CF49614A9C7A1FF68C43,
-				A8828071F6088D1129ABED6E,
-				F0A49FDA05360B663ADB3870,
-				14DC73DBA52A04430B18BC99,
-				C03DA4F21D03A580BA7D4466,
-				B872D288C4BADBDFC63B66B4,
-				4952022608383AE8A51086C9,
-				05482D542ACA44CDF265B3FD,
-				84F9B8E3EDBFF5B4AA0CD37E,
-				EAD6816A3F4294C99B2ECA90,
-				B7389C569B7AB6B51D17A98B,
-				9C2234FAB770732BACFA75FC,
-				91F16175DAB104329553EA8C,
-				C731F16DF8DAB74DB5EFD318,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4FAE522A3CB70CF28EC8C13A = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				168410619A7BAB78B0DC3EDD,
 				1BF5CF49614A9C7A1FF68C43,
 				A8828071F6088D1129ABED6E,
 				F0A49FDA05360B663ADB3870,
@@ -310,7 +274,6 @@
 		56B8AAEFDEA8130BB7D0A7D8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				B9312B1D3245D813369140E1,
 				2CBD6EC6F13D892A95252D40,
 				9079B319242C72E4D53C7F50,
 				AB15D50079F6CB9209693A41,
@@ -333,7 +296,6 @@
 			isa = PBXGroup;
 			children = (
 				E625A172D572D06CEEA9D6A9,
-				18CDA7F23F6935D9F1751AA9,
 				BF3F14A1FE4C9DEC39CF2C31,
 				FF382A09F5219807689E8AAD,
 				239195DE647C4F8B2F7D4C9D,
@@ -348,8 +310,6 @@
 				A395E6448815D917A19FB043,
 				A955C09A3E271676C5E63C7A,
 				0134573644075C25C38AD269,
-				62987939A551CCD372C323DB,
-				855427F97926F05C9F1F0CD7,
 				4B245C54068D321559891E72,
 				187537D4E802955EDFE16752,
 				9D145DB1373489E74E03150A,
@@ -397,7 +357,6 @@
 			isa = PBXGroup;
 			children = (
 				94008CF829EA82B6AFF642C6,
-				8E8A3C2005B7BC97302E2E98,
 				A1BF8445F24BFBFE94ACA779,
 				335689F67F21C497D948A37E,
 				8178E3D4DF45D7B5B7058A91,
@@ -435,8 +394,6 @@
 				9DFA843E3A6435422D0BBA60,
 				69A862EC38E585A46F1D152E,
 				9EAE0E6F885911298ADE296F,
-				C51F3E1B356A56D67C902EA0,
-				9673113CB15F07A0147AC3F0,
 				6002F206AC0D9145554B5D85,
 				9AF2B7D635E1BF630F5C76EE,
 				16FECFA3207AD39CA5F47906,
@@ -502,7 +459,6 @@
 				7F0E1658B759A07D4A5FA067,
 				D0A43DDFEB7CD3E4B3FA4E8F,
 				396552D3056047E9A510A610,
-				0E7670409012B569B93D7A73,
 				ECE213BDE2DC9391E2EBCCBE,
 				7461286A409C9016194C6C96,
 				CBF66CE9AA69D2BEBBE81CDD,
@@ -591,26 +547,6 @@
 			name = "Chordism - VST3";
 			productName = Chordism;
 			productReference = 94008CF829EA82B6AFF642C6;
-			productType = "com.apple.product-type.bundle";
-		};
-		B6B3CC730E858BA2EFC1F045 /* Chordism - AU */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 3D6B0F0B3362D86BB648C9ED;
-			buildPhases = (
-				3C56D90C4A111CFAADA60B3B,
-				6123D2027351981ED7E7764C,
-				4FAE522A3CB70CF28EC8C13A,
-				F6842761D2E43B54630E754D,
-				96DC1ACE4F8419157F99C722,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				B04C033D99CAC47627A44845,
-			);
-			name = "Chordism - AU";
-			productName = Chordism;
-			productReference = 8E8A3C2005B7BC97302E2E98;
 			productType = "com.apple.product-type.bundle";
 		};
 		F8C69F0AFD5D0814FD7CE0DC /* Chordism - Standalone Plugin */ = {
@@ -730,28 +666,6 @@
 							};
 						};
 					};
-					B6B3CC730E858BA2EFC1F045 = {
-						SystemCapabilities = {
-							com.apple.ApplicationGroups.iOS = {
-								enabled = 0;
-							};
-							com.apple.HardenedRuntime = {
-								enabled = 0;
-							};
-							com.apple.InAppPurchase = {
-								enabled = 0;
-							};
-							com.apple.InterAppAudio = {
-								enabled = 0;
-							};
-							com.apple.Push = {
-								enabled = 0;
-							};
-							com.apple.Sandbox = {
-								enabled = 0;
-							};
-						};
-					};
 					F8C69F0AFD5D0814FD7CE0DC = {
 						SystemCapabilities = {
 							com.apple.ApplicationGroups.iOS = {
@@ -789,7 +703,6 @@
 			targets = (
 				314FE110B9FE4545AF17B3F2,
 				A8F518ACB0AB9F6E16D41CD0,
-				B6B3CC730E858BA2EFC1F045,
 				F8C69F0AFD5D0814FD7CE0DC,
 				4BDA94CAF9D35FF9F725F6CD,
 				417F9D2DF34F7666E80AAC8B,
@@ -799,14 +712,6 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		16513B03EB26873D53AD896F = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				0EDBBBED6C9C4448E5B83618,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		3C56D90C4A111CFAADA60B3B = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -847,17 +752,6 @@
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\n\necho Signing Identity:	${EXPANDED_CODE_SIGN_IDENTITY_NAME:-${CODE_SIGN_IDENTITY}}\n\nentitlementsFile=\"${TARGET_TEMP_DIR}/${FULL_PRODUCT_NAME}.xcent\"\n\nif [[ ! -f \"${entitlementsFile}\" ]]; then\n  entitlementsFile=\"\"\nfi\n\necho Entitlements File:	${entitlementsFile:-None}\necho\necho Running codesign --force --sign \\\"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}\\\" --verbose=4 --timestamp  ${entitlementsFile:+--entitlements \\\"${entitlementsFile}\\\"} --generate-entitlement-der \\\"${CODESIGNING_FOLDER_PATH}\\\"\ncodesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}\" --verbose=4 --timestamp  ${entitlementsFile:+--entitlements \"${entitlementsFile}\"} --generate-entitlement-der \"${CODESIGNING_FOLDER_PATH}\"\necho\necho Running codesign --verify --deep --verbose=4 \\\"${CODESIGNING_FOLDER_PATH}\\\"\ncodesign --verify --deep --verbose=4 \"${CODESIGNING_FOLDER_PATH}\"\n";
 		};
-		96DC1ACE4F8419157F99C722 /* Install Target */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			name = "Install Target";
-			alwaysOutOfDate = 1;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nif [[ \"${CONFIGURATION}\" == \"Debug\" ]]; then\n  destinationPath=\"${HOME}/Library/Audio/Plug-Ins/Components/$(basename \"${TARGET_BUILD_DIR}/${WRAPPER_NAME:-${EXECUTABLE_NAME}}\")\"\nfi\n\nif [[ \"${CONFIGURATION}\" == \"Release\" ]]; then\n  destinationPath=\"${HOME}/Library/Audio/Plug-Ins/Components/$(basename \"${TARGET_BUILD_DIR}/${WRAPPER_NAME:-${EXECUTABLE_NAME}}\")\"\nfi\n\nif [[ -n \"${destinationPath-}\" ]]; then\n  echo Running rm -rf \\\"${destinationPath}\\\"\n  rm -rf \"${destinationPath}\"\n  echo Running ditto \\\"${TARGET_BUILD_DIR}/${WRAPPER_NAME:-${EXECUTABLE_NAME}}\\\" \\\"${destinationPath}\\\"\n  ditto \"${TARGET_BUILD_DIR}/${WRAPPER_NAME:-${EXECUTABLE_NAME}}\" \"${destinationPath}\"\nfi\n";
-		};
 		9EED6F246AE9F39FEFA8D9B2 /* Sign Target */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -870,17 +764,6 @@
 			shellScript = "set -euo pipefail\n\necho Signing Identity:	${EXPANDED_CODE_SIGN_IDENTITY_NAME:-${CODE_SIGN_IDENTITY}}\n\nentitlementsFile=\"${TARGET_TEMP_DIR}/${FULL_PRODUCT_NAME}.xcent\"\n\nif [[ ! -f \"${entitlementsFile}\" ]]; then\n  entitlementsFile=\"\"\nfi\n\necho Entitlements File:	${entitlementsFile:-None}\necho\necho Running codesign --force --sign \\\"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}\\\" --verbose=4 --timestamp  ${entitlementsFile:+--entitlements \\\"${entitlementsFile}\\\"} --generate-entitlement-der \\\"${CODESIGNING_FOLDER_PATH}\\\"\ncodesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}\" --verbose=4 --timestamp  ${entitlementsFile:+--entitlements \"${entitlementsFile}\"} --generate-entitlement-der \"${CODESIGNING_FOLDER_PATH}\"\necho\necho Running codesign --verify --deep --verbose=4 \\\"${CODESIGNING_FOLDER_PATH}\\\"\ncodesign --verify --deep --verbose=4 \"${CODESIGNING_FOLDER_PATH}\"\n";
 		};
 		BBE3D4288C7A998EB4625896 /* Sign Target */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			name = "Sign Target";
-			alwaysOutOfDate = 1;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\necho Signing Identity:	${EXPANDED_CODE_SIGN_IDENTITY_NAME:-${CODE_SIGN_IDENTITY}}\n\nentitlementsFile=\"${TARGET_TEMP_DIR}/${FULL_PRODUCT_NAME}.xcent\"\n\nif [[ ! -f \"${entitlementsFile}\" ]]; then\n  entitlementsFile=\"\"\nfi\n\necho Entitlements File:	${entitlementsFile:-None}\necho\necho Running codesign --force --sign \\\"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}\\\" --verbose=4 --timestamp  ${entitlementsFile:+--entitlements \\\"${entitlementsFile}\\\"} --generate-entitlement-der \\\"${CODESIGNING_FOLDER_PATH}\\\"\ncodesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY}}\" --verbose=4 --timestamp  ${entitlementsFile:+--entitlements \"${entitlementsFile}\"} --generate-entitlement-der \"${CODESIGNING_FOLDER_PATH}\"\necho\necho Running codesign --verify --deep --verbose=4 \\\"${CODESIGNING_FOLDER_PATH}\\\"\ncodesign --verify --deep --verbose=4 \"${CODESIGNING_FOLDER_PATH}\"\n";
-		};
-		F6842761D2E43B54630E754D /* Sign Target */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -913,15 +796,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		6123D2027351981ED7E7764C = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				204C4362AB16782AF1DF7BB7,
-				2598BA2BF5119E7585E840E7,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8E099FBCEE8A3D070083FC9B = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -936,7 +810,6 @@
 			files = (
 				A523D596C097603153302C2A,
 				4CAF3C6CEBFC0E1857A3AD5E,
-				22ED3FCD9790CE91C0D28E8B,
 				7E332DE8CEFF3ADE0570F5FE,
 				D3ED240B033DDBBE29B32D79,
 				6C977AC2F1092A4AC1EE6C7F,
@@ -991,14 +864,6 @@
 			isa = PBXTargetDependency;
 			target = 4BDA94CAF9D35FF9F725F6CD;
 		};
-		82DD0821A0592195DCA9C1D1 = {
-			isa = PBXTargetDependency;
-			target = B6B3CC730E858BA2EFC1F045;
-		};
-		B04C033D99CAC47627A44845 = {
-			isa = PBXTargetDependency;
-			target = 4BDA94CAF9D35FF9F725F6CD;
-		};
 		C7CF8E6FF674D84B9EA46A4D = {
 			isa = PBXTargetDependency;
 			target = 4BDA94CAF9D35FF9F725F6CD;
@@ -1022,126 +887,6 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		2F89771615EE70187CC8EEB2 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_LINK_OBJC_RUNTIME = NO;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "$(PROJECT_DIR)/build/$(CONFIGURATION)";
-				COPY_PHASE_STRIP = NO;
-				DEPLOYMENT_POSTPROCESSING = NO;
-				EXCLUDED_ARCHS = "";
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"_DEBUG=1",
-					"DEBUG=1",
-					"JUCE_PROJUCER_VERSION=0x8000e",
-					"JUCE_MODULE_AVAILABLE_juce_audio_basics=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_devices=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_formats=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_processors=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_utils=1",
-					"JUCE_MODULE_AVAILABLE_juce_core=1",
-					"JUCE_MODULE_AVAILABLE_juce_data_structures=1",
-					"JUCE_MODULE_AVAILABLE_juce_events=1",
-					"JUCE_MODULE_AVAILABLE_juce_graphics=1",
-					"JUCE_MODULE_AVAILABLE_juce_gui_basics=1",
-					"JUCE_MODULE_AVAILABLE_juce_gui_extra=1",
-					"JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1",
-					"JUCE_VST3_CAN_REPLACE_VST2=0",
-					"JUCE_USE_CURL=0",
-					"JUCE_STRICT_REFCOUNTEDPOINTER=1",
-					"JUCE_WEB_BROWSER=0",
-					"JucePlugin_Build_VST=0",
-					"JucePlugin_Build_VST3=0",
-					"JucePlugin_Build_AU=1",
-					"JucePlugin_Build_AUv3=0",
-					"JucePlugin_Build_AAX=0",
-					"JucePlugin_Build_Standalone=0",
-					"JucePlugin_Build_Unity=0",
-					"JucePlugin_Build_LV2=0",
-					"JucePlugin_Enable_IAA=0",
-					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"Chordism\\\"",
-					"JucePlugin_Desc=\\\"One\\ key\\ plays\\ a\\ chord:\\ a\\ MIDI\\ chord\\ generator\\\"",
-					"JucePlugin_Manufacturer=\\\"Alistair\\ Rutherford\\\"",
-					"JucePlugin_ManufacturerWebsite=\\\"https://github.com/alistairrutherford/chordism\\\"",
-					"JucePlugin_ManufacturerEmail=\\\"\\\"",
-					"JucePlugin_ManufacturerCode=0x41527574",
-					"JucePlugin_PluginCode=0x4364736d",
-					"JucePlugin_IsSynth=1",
-					"JucePlugin_WantsMidiInput=1",
-					"JucePlugin_ProducesMidiOutput=1",
-					"JucePlugin_IsMidiEffect=0",
-					"JucePlugin_EditorRequiresKeyboardFocus=0",
-					"JucePlugin_Version=0.1.0",
-					"JucePlugin_VersionCode=0x100",
-					"JucePlugin_VersionString=\\\"0.1.0\\\"",
-					"JucePlugin_VSTUniqueID=JucePlugin_PluginCode",
-					"JucePlugin_VSTCategory=kPlugCategSynth",
-					"JucePlugin_Vst3Category=\\\"Instrument|Tools\\\"",
-					"JucePlugin_AUMainType=\\'aumu\\'",
-					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=ChordismAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"ChordismAU\\\"",
-					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=com.alistairrutherford.chordism",
-					"JucePlugin_AAXIdentifier=com.AlistairRutherford.Chordism",
-					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
-					"JucePlugin_AAXCategory=2048",
-					"JucePlugin_AAXDisableBypass=0",
-					"JucePlugin_AAXDisableMultiMono=0",
-					"JucePlugin_IAAType=0x61757269",
-					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"Alistair\\ Rutherford:\\ Chordism\\\"",
-					"JucePlugin_VSTNumMidiInputs=16",
-					"JucePlugin_VSTNumMidiOutputs=16",
-					"JucePlugin_ARAContentTypes=0",
-					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"com.AlistairRutherford.Chordism.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"com.AlistairRutherford.Chordism.aradocumentarchive.0.1.0\\\"",
-					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
-					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
-					"JUCER_XCODE_MAC_F6D2F4CF=1",
-					"JUCE_APP_VERSION=0.1.0",
-					"JUCE_APP_VERSION_HEX=0x100",
-				);
-				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
-				GENERATE_PKGINFO_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"/Users/alistairrutherford/Development/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK",
-					"$(SRCROOT)/../../JuceLibraryCode",
-					"/Users/alistairrutherford/Development/JUCE/modules",
-					"/Users/alistairrutherford/Development/JUCE/modules/juce_audio_plugin_client/AU",
-					"$(inherited)",
-				);
-				INFOPLIST_FILE = Info-AU.plist;
-				INFOPLIST_PREPROCESS = NO;
-				INSTALL_PATH = "$(HOME)/Library/Audio/Plug-Ins/Components";
-				LIBRARY_STYLE = Bundle;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
-				MTL_HEADER_SEARCH_PATHS = "/Users/alistairrutherford/Development/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK $(SRCROOT)/../../JuceLibraryCode /Users/alistairrutherford/Development/JUCE/modules /Users/alistairrutherford/Development/JUCE/modules/juce_audio_plugin_client/AU";
-				OTHER_CFLAGS = "$(inherited)";
-				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				OTHER_LDFLAGS = "$(inherited) -bundle -lChordism";
-				OTHER_REZFLAGS = "-d ppc_$ppc -d i386_$i386 -d ppc64_$ppc64 -d x86_64_$x86_64 -d arm64_$arm64 -I /System/Library/Frameworks/CoreServices.framework/Frameworks/CarbonCore.framework/Versions/A/Headers -I \"$(DEVELOPER_DIR)/Extras/CoreAudio/AudioUnits/AUPublic/AUBase\" -I \"$(DEVELOPER_DIR)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/AudioUnit.framework/Headers\"";
-				PRODUCT_BUNDLE_IDENTIFIER = com.alistairrutherford.chordism;
-				PRODUCT_NAME = "Chordism";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				USE_HEADERMAP = NO;
-				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
-				WRAPPER_EXTENSION = component;
-			};
-			name = Debug;
-		};
 		469AD6F11BC746918D9C9614 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1361,7 +1106,7 @@
 					"JUCE_WEB_BROWSER=0",
 					"JucePlugin_Build_VST=0",
 					"JucePlugin_Build_VST3=1",
-					"JucePlugin_Build_AU=1",
+					"JucePlugin_Build_AU=0",
 					"JucePlugin_Build_AUv3=0",
 					"JucePlugin_Build_AAX=0",
 					"JucePlugin_Build_Standalone=1",
@@ -1597,7 +1342,7 @@
 					"JUCE_WEB_BROWSER=0",
 					"JucePlugin_Build_VST=0",
 					"JucePlugin_Build_VST3=1",
-					"JucePlugin_Build_AU=1",
+					"JucePlugin_Build_AU=0",
 					"JucePlugin_Build_AUv3=0",
 					"JucePlugin_Build_AAX=0",
 					"JucePlugin_Build_Standalone=1",
@@ -1672,127 +1417,6 @@
 				SKIP_INSTALL = YES;
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
-			};
-			name = Release;
-		};
-		A983E655F9E2D93AAD4DF0D0 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_LINK_OBJC_RUNTIME = NO;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "$(PROJECT_DIR)/build/$(CONFIGURATION)";
-				DEAD_CODE_STRIPPING = YES;
-				DEPLOYMENT_POSTPROCESSING = NO;
-				EXCLUDED_ARCHS = "";
-				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
-				GCC_OPTIMIZATION_LEVEL = 3;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"_NDEBUG=1",
-					"NDEBUG=1",
-					"JUCE_PROJUCER_VERSION=0x8000e",
-					"JUCE_MODULE_AVAILABLE_juce_audio_basics=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_devices=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_formats=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_processors=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1",
-					"JUCE_MODULE_AVAILABLE_juce_audio_utils=1",
-					"JUCE_MODULE_AVAILABLE_juce_core=1",
-					"JUCE_MODULE_AVAILABLE_juce_data_structures=1",
-					"JUCE_MODULE_AVAILABLE_juce_events=1",
-					"JUCE_MODULE_AVAILABLE_juce_graphics=1",
-					"JUCE_MODULE_AVAILABLE_juce_gui_basics=1",
-					"JUCE_MODULE_AVAILABLE_juce_gui_extra=1",
-					"JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1",
-					"JUCE_VST3_CAN_REPLACE_VST2=0",
-					"JUCE_USE_CURL=0",
-					"JUCE_STRICT_REFCOUNTEDPOINTER=1",
-					"JUCE_WEB_BROWSER=0",
-					"JucePlugin_Build_VST=0",
-					"JucePlugin_Build_VST3=0",
-					"JucePlugin_Build_AU=1",
-					"JucePlugin_Build_AUv3=0",
-					"JucePlugin_Build_AAX=0",
-					"JucePlugin_Build_Standalone=0",
-					"JucePlugin_Build_Unity=0",
-					"JucePlugin_Build_LV2=0",
-					"JucePlugin_Enable_IAA=0",
-					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"Chordism\\\"",
-					"JucePlugin_Desc=\\\"One\\ key\\ plays\\ a\\ chord:\\ a\\ MIDI\\ chord\\ generator\\\"",
-					"JucePlugin_Manufacturer=\\\"Alistair\\ Rutherford\\\"",
-					"JucePlugin_ManufacturerWebsite=\\\"https://github.com/alistairrutherford/chordism\\\"",
-					"JucePlugin_ManufacturerEmail=\\\"\\\"",
-					"JucePlugin_ManufacturerCode=0x41527574",
-					"JucePlugin_PluginCode=0x4364736d",
-					"JucePlugin_IsSynth=1",
-					"JucePlugin_WantsMidiInput=1",
-					"JucePlugin_ProducesMidiOutput=1",
-					"JucePlugin_IsMidiEffect=0",
-					"JucePlugin_EditorRequiresKeyboardFocus=0",
-					"JucePlugin_Version=0.1.0",
-					"JucePlugin_VersionCode=0x100",
-					"JucePlugin_VersionString=\\\"0.1.0\\\"",
-					"JucePlugin_VSTUniqueID=JucePlugin_PluginCode",
-					"JucePlugin_VSTCategory=kPlugCategSynth",
-					"JucePlugin_Vst3Category=\\\"Instrument|Tools\\\"",
-					"JucePlugin_AUMainType=\\'aumu\\'",
-					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=ChordismAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"ChordismAU\\\"",
-					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=com.alistairrutherford.chordism",
-					"JucePlugin_AAXIdentifier=com.AlistairRutherford.Chordism",
-					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
-					"JucePlugin_AAXCategory=2048",
-					"JucePlugin_AAXDisableBypass=0",
-					"JucePlugin_AAXDisableMultiMono=0",
-					"JucePlugin_IAAType=0x61757269",
-					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"Alistair\\ Rutherford:\\ Chordism\\\"",
-					"JucePlugin_VSTNumMidiInputs=16",
-					"JucePlugin_VSTNumMidiOutputs=16",
-					"JucePlugin_ARAContentTypes=0",
-					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"com.AlistairRutherford.Chordism.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"com.AlistairRutherford.Chordism.aradocumentarchive.0.1.0\\\"",
-					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
-					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
-					"JUCER_XCODE_MAC_F6D2F4CF=1",
-					"JUCE_APP_VERSION=0.1.0",
-					"JUCE_APP_VERSION_HEX=0x100",
-				);
-				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
-				GENERATE_PKGINFO_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"/Users/alistairrutherford/Development/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK",
-					"$(SRCROOT)/../../JuceLibraryCode",
-					"/Users/alistairrutherford/Development/JUCE/modules",
-					"/Users/alistairrutherford/Development/JUCE/modules/juce_audio_plugin_client/AU",
-					"$(inherited)",
-				);
-				INFOPLIST_FILE = Info-AU.plist;
-				INFOPLIST_PREPROCESS = NO;
-				INSTALL_PATH = "$(HOME)/Library/Audio/Plug-Ins/Components";
-				LIBRARY_STYLE = Bundle;
-				LLVM_LTO = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.0;
-				MTL_HEADER_SEARCH_PATHS = "/Users/alistairrutherford/Development/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK $(SRCROOT)/../../JuceLibraryCode /Users/alistairrutherford/Development/JUCE/modules /Users/alistairrutherford/Development/JUCE/modules/juce_audio_plugin_client/AU";
-				OTHER_CFLAGS = "$(inherited)";
-				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				OTHER_LDFLAGS = "$(inherited) -bundle -lChordism";
-				OTHER_REZFLAGS = "-d ppc_$ppc -d i386_$i386 -d ppc64_$ppc64 -d x86_64_$x86_64 -d arm64_$arm64 -I /System/Library/Frameworks/CoreServices.framework/Frameworks/CarbonCore.framework/Versions/A/Headers -I \"$(DEVELOPER_DIR)/Extras/CoreAudio/AudioUnits/AUPublic/AUBase\" -I \"$(DEVELOPER_DIR)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/AudioUnit.framework/Headers\"";
-				PRODUCT_BUNDLE_IDENTIFIER = com.alistairrutherford.chordism;
-				PRODUCT_NAME = "Chordism";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				USE_HEADERMAP = NO;
-				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
-				WRAPPER_EXTENSION = component;
 			};
 			name = Release;
 		};
@@ -2332,15 +1956,6 @@
 			buildConfigurations = (
 				6837C2955C5B5D8E2C0E133C,
 				562699D3C44EB06D1AE0347A,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		3D6B0F0B3362D86BB648C9ED = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				2F89771615EE70187CC8EEB2,
-				A983E655F9E2D93AAD4DF0D0,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

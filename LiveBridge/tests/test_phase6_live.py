@@ -9,7 +9,7 @@ the VST3 "MIDI From" route, which is sample-accurate.
                   identical, and seed 8 plays another melody
     preset        the factory presets are the plug-in's programs, and Live shows JUCE's "Program"
                   parameter (Live lists no VST3 programs under the device's presets): choosing a
-                  program loads it, Live sees its parameters change, the routing and the test rig
+                  program loads it, Live sees its parameters change, Enable and the test rig
                   stay as they were, and Init brings back the defaults
     export        a take of the test pattern (Pop, Sevenths, Strum Up 1/64), recorded on the Rec
                   track. While the Test pattern is on, Chordism writes each finished take the way
@@ -191,14 +191,14 @@ def _melody_settings(seed):
 
 
 def _melody_take(live, rig, reference, seed):
-    _configure(live, rig, reference, 0, "Major", "Triads", compensate=True)
+    _configure(live, rig, reference, 0, "Major", "Triads")
     _set(live, rig, "Progression", 0, [""] * 9)
     _set(live, rig, "Test shifter", 0, [""] * 6)
     _apply(live, rig, CHORD_DEFAULTS)
     _apply(live, rig, SMART_DEFAULTS)
     shown = _apply(live, rig, _melody_settings(seed))
     try:
-        routing, audio, clip, notes, beats = _record(live, rig, "vst3")
+        routing, audio, clip, notes, beats = _record(live, rig)
     finally:
         _apply(live, rig, SMART_DEFAULTS)
         _apply(live, rig, {"Pattern 1 arp": ("Linear Up", PATTERN_ARP), "Melody seed": (1, (1, 999))})
@@ -248,11 +248,11 @@ def _shown(live, rig, names):
 
 
 def test_preset_program(live, rig, reference, report):
-    _configure(live, rig, reference, 0, "Major", "Triads", compensate=True)
+    _configure(live, rig, reference, 0, "Major", "Triads")
     _set(live, rig, "Test pattern", False)
     names = [_program(live, rig, i)["display"] for i in range(len(PROGRAMS))]
     watched = ["Key", "Scale", "Chord Group", "Progression", "Step seq", "Seq pattern", "Velocity", "Strum", "Arp",
-               "Pattern 1 arp", "Pattern 1 notes", "Melody seed", "Virtual port", "Test pattern", "Enable"]
+               "Pattern 1 arp", "Pattern 1 notes", "Melody seed", "Test pattern", "Enable"]
     loads = {}
     for name in ("House Stabs", "Jazz Two-Five", "Bright Melody", "Init"):
         _program(live, rig, PROGRAMS.index(name))
@@ -276,8 +276,8 @@ def test_preset_program(live, rig, reference, report):
     init = loads["Init"]
     assert (init["Key"], init["Scale"], init["Chord Group"], init["Pattern 1 arp"], init["Strum"]) == \
         ("C", "Major", "Triads", "Linear Up", "Off"), init
-    for v in loads.values():   # a preset leaves the routing and the test rig alone
-        assert (v["Virtual port"], v["Test pattern"], v["Enable"]) == ("On", "Off", "On"), v
+    for v in loads.values():   # a preset leaves Enable and the test rig alone
+        assert (v["Test pattern"], v["Enable"]) == ("Off", "On"), v
 
 
 def _wait_file(path, after, timeout=5.0):
@@ -290,7 +290,7 @@ def _wait_file(path, after, timeout=5.0):
 
 
 def test_export_take(live, rig, reference, report):
-    _configure(live, rig, reference, 0, "Major", "Sevenths", compensate=True)
+    _configure(live, rig, reference, 0, "Major", "Sevenths")
     _set(live, rig, "Progression", 2, [""] * 9)          # Pop
     _set(live, rig, "Test shifter", 0, [""] * 6)
     _apply(live, rig, CHORD_DEFAULTS)
@@ -300,7 +300,7 @@ def test_export_take(live, rig, reference, report):
         os.remove(TEST_TAKE)
     started = time.time()
     try:
-        routing, audio, clip, notes, beats = _record(live, rig, "vst3")
+        routing, audio, clip, notes, beats = _record(live, rig)
     finally:
         _apply(live, rig, CHORD_DEFAULTS)
         _set(live, rig, "Progression", 0, [""] * 9)
