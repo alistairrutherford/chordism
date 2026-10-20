@@ -86,6 +86,16 @@ namespace chordism::params
     juce::String patternChord (int slot);           // "pattern1Chord"…
     juce::String patternGate (int slot);            // "pattern1Gate"…
 
+    // Phase 6 (appended): Melody mode. "Pattern n arp" gained a last choice, "Melody"; Notes
+    // per bar and Rhythm are per slot, Swing and Seed shared by the five slots.
+    juce::String patternNotes (int slot);           // "pattern1Notes"…
+    juce::String patternRhythm (int slot);          // "pattern1Rhythm"…
+    inline constexpr const char* melodySwing   = "melodySwing";
+    inline constexpr const char* melodySeed    = "melodySeed";
+
+    // Parameters a preset doesn't touch: routing and the test rig (PresetManager).
+    bool isPresetParameter (const juce::String& paramId);
+
     // A sequencer pattern as Live shows it: "x" for an active step, "." for a rest, step 1 first.
     juce::String stepsText (int mask);
     int stepsFromText (const juce::String& text);
@@ -166,6 +176,9 @@ namespace chordism::params
         std::atomic<float>* ssTest;
         std::array<std::atomic<float>*, numSeqPatterns> ssSeqSteps {};
         std::array<std::atomic<float>*, numPatternSlots> patArp {}, patRate {}, patRange {}, patChord {}, patGate {};
+        std::array<std::atomic<float>*, numPatternSlots> patNotes {}, patRhythm {};
+        std::atomic<float>* ssMelodySwing;
+        std::atomic<float>* ssMelodySeed;
     };
 
     // MIDI note name as Live writes it (60 = C3).

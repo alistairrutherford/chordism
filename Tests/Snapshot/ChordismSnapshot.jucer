@@ -18,6 +18,9 @@
         <FILE id="snF008" name="Keyboards.cpp" compile="1" resource="0" file="../../Source/ui/Keyboards.cpp"/>
         <FILE id="snF009" name="ChordEditorPanel.cpp" compile="1" resource="0" file="../../Source/ui/ChordEditorPanel.cpp"/>
         <FILE id="snF010" name="Panels.cpp" compile="1" resource="0" file="../../Source/ui/Panels.cpp"/>
+        <FILE id="snF011" name="PresetManager.cpp" compile="1" resource="0" file="../../Source/plugin/PresetManager.cpp"/>
+        <FILE id="snF012" name="FactoryPresets.cpp" compile="1" resource="0" file="../../Source/plugin/FactoryPresets.cpp"/>
+        <FILE id="snF013" name="PresetBar.cpp" compile="1" resource="0" file="../../Source/ui/PresetBar.cpp"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

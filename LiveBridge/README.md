@@ -67,6 +67,9 @@ uv run pytest tests/test_timing_live.py    # Live running with the control surfa
 uv run pytest tests/test_phase1_live.py    # Phase 1: chords + timing, VST3 and port routes
 uv run pytest tests/test_phase2_live.py    # Phase 2: progressions and shifters (VST3)
 uv run pytest tests/test_phase3_live.py    # Phase 3: strum, arp, repeat + velocity (VST3)
+uv run pytest tests/test_phase4_live.py    # Phase 4: Smart Scale mappings and patterns (VST3)
+uv run pytest tests/test_phase5_live.py -k prepare   # Phase 5: state restore (two stages, see the file)
+uv run pytest tests/test_phase6_live.py    # Phase 6: Melody seed, presets (Program), Export file + Live's import
 CHORDISM_FORMAT=au uv run pytest tests/test_phase1_live.py    # the AU instrument (port route only)
 ```
 
@@ -161,7 +164,12 @@ uv run python -m livebridge wait --timeout 120 # until the bridge answers
   at 128 and 1024", change it by hand between runs. The report reads the new value from Live's log.
 - **Sample rate** (also read from the log), **MIDI port switches** (Track / Sync / Remote), **plug-in rescans**, and the
   **count-in** preference. Count-in doesn't change the results: the recorder waits for song time.
-- **Plug-in windows.** The LOM can't open a plug-in editor or click in it.
+- **Plug-in windows.** The LOM can't open a plug-in editor or click in it. So Export's drag
+  gesture and a MIDI file dropped on the editor are checked by hand; the files themselves are
+  tested (`test_phase6_live.py` reads the take Chordism writes while its Test pattern is on, and
+  loads it through Live's browser, Live's own MIDI file import).
+- **VST3 programs.** Live lists no VST3 programs under a device's `presets` (only "Default"), but
+  shows JUCE's **Program** parameter (normalised: program n of N is n / (N − 1)).
 
 ## Socket protocol
 
@@ -217,6 +225,9 @@ index or a name. Names match exactly (ignoring case) first, then by a unique sub
 | `clear_arrangement_clips` | `track` | `{deleted}` |
 | `get_clip_notes` | `track`, `source="auto"` (`arrangement`/`session`), `clip_index?`, `scene?` | clip info (start_time, markers, loop, length) and `notes[]` (pitch, start_time, duration, velocity, mute, probability, and `song_time` for arrangement clips) |
 | `get_meters` | `tracks?` (default all) | `[{track, name, left, right, level}]`, master last |
+| `get_presets` | `track`, `device` | `{device, presets[], selected}`: Live's preset list for a plug-in (for a JUCE VST3, only "Default") |
+| `set_preset` | `track`, `device`, `preset` (index or name) | as `get_presets`, after selecting it |
+| `load_clip_file` | `name`, `category="user_library"` | loads a MIDI file from the browser as a double-click would: Live imports it as a session clip on a new MIDI track; returns `track_count_before` and the browser item |
 
 **Plug-in lookup.** `load_device` walks `application().browser.<category>` (for plugins, the
 Plug-Ins tree). It loads onto the track by selecting it and calling `browser.load_item`.

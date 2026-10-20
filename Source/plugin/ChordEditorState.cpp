@@ -120,6 +120,14 @@ namespace chordism
         commit();
     }
 
+    void ChordEditorState::setImported (ChordGroup group, const std::array<DegreeEdit, numChordSlots>& degrees)
+    {
+        const juce::ScopedLock sl (lock);
+        editor::reset (model, group);
+        model.degrees = degrees;
+        commit();
+    }
+
     void ChordEditorState::resetDegree (int degree)
     {
         const juce::ScopedLock sl (lock);

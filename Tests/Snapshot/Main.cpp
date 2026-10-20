@@ -11,6 +11,12 @@
 //   3. state      a saved state restores every parameter, the Chord Editor's edits and the UI's
 //                 preferences into a new instance; a state from before Phase 4 (64 step bools)
 //                 restores the same sequencer patterns
+//   4. Phase 6    presets (every factory program loads its values over the defaults, Init is
+//                 the defaults, a preset's state round-trips into a new instance without touching
+//                 routing or the test rig, a load ends every note); MIDI import from a file (the
+//                 parameters, edits and chords it gives); Export under a playing transport (the
+//                 handle's bar count and the file); QWERTY (both layouts, and a key press through
+//                 the editor plays its chord)
 //
 //   ChordismSnapshot <fixtures dir> <output dir> [--update]
 //
@@ -20,6 +26,7 @@
 #include "../../Source/plugin/ChordismProcessor.h"
 #include "../../Source/ui/ChordismEditor.h"
 #include "../../Source/ui/ChordEditorPanel.h"
+#include "../../Source/core/midiio/MidiFile.h"
 #include <iostream>
 
 using namespace chordism;
@@ -52,15 +59,51 @@ namespace
 
     float get (ChordismProcessor& p, const juce::String& id) { return p.state.getRawParameterValue (id)->load(); }
 
-    // A block of the processor with these MIDI events at sample 0.
-    void block (ChordismProcessor& p, std::initializer_list<juce::MidiMessage> events)
+    // A block of the processor with these MIDI events at sample 0; returns its output.
+    juce::MidiBuffer block (ChordismProcessor& p, std::initializer_list<juce::MidiMessage> events)
     {
         juce::AudioBuffer<float> audio (2, 512);
         juce::MidiBuffer midi;
         for (const auto& e : events)
             midi.addEvent (e, 0);
         p.processBlock (audio, midi);
+        return midi;
     }
+
+    std::vector<int> noteOns (const juce::MidiBuffer& midi)
+    {
+        std::vector<int> n;
+        for (const auto m : midi)
+            if (m.getMessage().isNoteOn())
+                n.push_back (m.getMessage().getNoteNumber());
+        std::sort (n.begin(), n.end());
+        return n;
+    }
+
+    int noteOffs (const juce::MidiBuffer& midi)
+    {
+        int n = 0;
+        for (const auto m : midi)
+            n += m.getMessage().isNoteOff() ? 1 : 0;
+        return n;
+    }
+
+    // A host transport for the processor (Export records only while it plays).
+    struct PlayHead : juce::AudioPlayHead
+    {
+        bool playing = false;
+        double ppq = 0.0;
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo info;
+            info.setIsPlaying (playing);
+            info.setPpqPosition (ppq);
+            info.setBpm (120.0);
+            info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
+            info.setPpqPositionOfLastBarStart (std::floor (ppq / 4.0) * 4.0);
+            return info;
+        }
+    };
 
     // Fraction of pixels that differ by more than `tolerance` in any channel (1 if sizes differ).
     double difference (const juce::Image& a, const juce::Image& b, int tolerance)
@@ -115,6 +158,8 @@ namespace
         set (p, params::mapping, (float) (int) Mapping::Dynamic);
         set (p, params::patternSlot, 2.0f);
         set (p, params::smartSeqPattern, 1.0f);
+        set (p, params::patternArp (2), (float) (numArpPatterns - 1));   // slot 3 in Melody mode (Phase 6)
+        set (p, params::patternRhythm (2), (float) (int) MelodyRhythm::Clave);
         set (p, params::port, 0.0f);
         // Edits on degree 5 (V): a flat 9th, the 7th an octave up as well.
         p.chordEditor.setOn (ChordGroup::Sevenths, Scale::Major, 4, 4, true);
@@ -126,6 +171,195 @@ namespace
         block (p, { juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), juce::MidiMessage::noteOn (1, 64, (juce::uint8) 100),
                     juce::MidiMessage::noteOn (1, 63, (juce::uint8) 100) });
         block (p, {});
+    }
+}
+
+namespace
+{
+    bool equalParams (ChordismProcessor& a, ChordismProcessor& b, juce::StringArray& differ, bool presetOnly)
+    {
+        for (auto* param : a.getParameters())
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (param))
+                if ((! presetOnly || params::isPresetParameter (withId->paramID)) && get (a, withId->paramID) != get (b, withId->paramID))
+                    differ.add (withId->paramID);
+        return differ.isEmpty();
+    }
+
+    void testPhase6()
+    {
+        std::cout << "== presets ==\n";
+        {
+            auto p = std::make_unique<ChordismProcessor>();
+            auto fresh = std::make_unique<ChordismProcessor>();
+            p->prepareToPlay (48000.0, 512);
+            const auto& factory = factoryPresets();
+            check (p->getNumPrograms() == (int) factory.size() && factory.size() >= 21 && p->getProgramName (0) == "Init",
+                   juce::String (factory.size() - 1) + " factory presets, plus Init as program 0");
+            int wrong = 0;
+            juce::String firstWrong;
+            for (int i = 1; i < (int) factory.size(); ++i)
+            {
+                p->setCurrentProgram (i);
+                for (const auto& [id, value] : factory[(size_t) i].values)
+                    if (std::abs (get (*p, id) - value) > 1.0e-3f)
+                    {
+                        if (wrong++ == 0)
+                            firstWrong = factory[(size_t) i].name + ": " + id + " = " + juce::String (get (*p, id)) + ", want " + juce::String (value);
+                    }
+                // Everything it doesn't set is the default.
+                for (auto* param : p->getParameters())
+                    if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (param))
+                    {
+                        bool listed = false;
+                        for (const auto& kv : factory[(size_t) i].values)
+                            listed |= kv.first == r->paramID;
+                        if (! listed && std::abs (r->getValue() - r->getDefaultValue()) > 1.0e-6f && params::isPresetParameter (r->paramID))
+                            if (wrong++ == 0)
+                                firstWrong = factory[(size_t) i].name + ": " + r->paramID + " isn't its default";
+                    }
+                if (p->getCurrentProgram() != i || p->getPresetName() != factory[(size_t) i].name)
+                    if (wrong++ == 0)
+                        firstWrong = factory[(size_t) i].name + ": program " + juce::String (p->getCurrentProgram());
+            }
+            check (wrong == 0, "every factory program sets its values over the defaults" + (firstWrong.isEmpty() ? juce::String() : " (" + firstWrong + ")"));
+            p->setCurrentProgram (0);
+            juce::StringArray differ;
+            check (equalParams (*p, *fresh, differ, false) && p->getPresetName() == "Init", "Init is the defaults (" + differ.joinIntoString (", ") + ")");
+
+            // A user preset's state into a new instance; routing and the test rig stay.
+            set (*p, params::key, 5.0f);
+            set (*p, params::scale, (float) (int) Scale::Dorian);
+            set (*p, params::chordGroup, (float) (int) ChordGroup::Ninths);
+            set (*p, params::patternArp (1), (float) (numArpPatterns - 1));
+            set (*p, params::melodySeed, 321.0f);
+            set (*p, params::seqSteps (2), (float) 0x1234);
+            p->chordEditor.setAccidental (ChordGroup::Ninths, Scale::Dorian, 3, 2, 1);
+            const auto tree = p->presetState();
+            auto other = std::make_unique<ChordismProcessor>();
+            set (*other, params::port, 0.0f);
+            set (*other, params::testPattern, 1.0f);
+            other->applyPreset (tree, "User", "Mine");
+            differ.clear();
+            check (equalParams (*p, *other, differ, true) && other->chordEditor.getEdits().sameEdits (p->chordEditor.getEdits())
+                       && get (*other, params::port) == 0.0f && get (*other, params::testPattern) == 1.0f && other->getPresetName() == "Mine",
+                   "a preset's state loads every preset parameter and the edits, and leaves the port and the test pattern ("
+                       + differ.joinIntoString (", ") + ")");
+            check (! tree.getChildWithProperty ("id", params::port).isValid() && ! tree.getChildWithProperty ("id", params::testPattern).isValid()
+                       && ! tree.getChildWithName ("UI").isValid(),
+                   "a preset doesn't hold the routing, the test rig or the editor's preferences");
+
+            // A load ends every note.
+            block (*p, { juce::MidiMessage::noteOn (1, 48, (juce::uint8) 100) });
+            p->setCurrentProgram (3);
+            const auto out = block (*p, {});
+            check (noteOffs (out) >= 3 && p->getPresetName() == factory[3].name, "loading a preset while a chord sounds ends its notes ("
+                                                                                     + juce::String (noteOffs (out)) + " note-offs)");
+
+            // The program and the name are saved with the plug-in.
+            juce::MemoryBlock saved;
+            p->getStateInformation (saved);
+            auto restored = std::make_unique<ChordismProcessor>();
+            restored->setStateInformation (saved.getData(), (int) saved.getSize());
+            check (restored->getCurrentProgram() == 3 && restored->getPresetName() == factory[3].name,
+                   "the current program and preset name restore with the plug-in's state");
+        }
+
+        std::cout << "== MIDI import ==\n";
+        {
+            auto p = std::make_unique<ChordismProcessor>();
+            p->prepareToPlay (48000.0, 512);
+            set (*p, params::chordGroup, (float) (int) ChordGroup::Sevenths);
+            MidiSong song;
+            const std::vector<std::vector<int>> chords = { { 45, 48, 52, 55 }, { 50, 53, 57, 60 }, { 43, 47, 50, 53, 57 }, { 48, 52, 55, 59 } };
+            int64_t t = 0;
+            for (const auto& c : chords)
+            {
+                for (int n : c)
+                    song.notes.push_back ({ t, t + 900, (uint8_t) n, 100, 0 });
+                t += 960;
+            }
+            const auto bytes = writeMidiFile (song);
+            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("chordism-snapshot-import.mid");
+            file.replaceWithData (bytes.data(), bytes.size());
+            const auto result = p->importMidiFile (file);
+            file.deleteFile();
+            std::vector<std::vector<int>> played;
+            for (int n = 0; n < 4; ++n)
+            {
+                const int key = 48 + std::array<int, 4> { 0, 2, 4, 5 }[(size_t) n];
+                played.push_back (noteOns (block (*p, { juce::MidiMessage::noteOn (1, key, (juce::uint8) 100) })));
+                block (*p, { juce::MidiMessage::noteOff (1, key) });
+            }
+            check (result.ok && (int) get (*p, params::progression) == (int) Progression::Custom && played == chords
+                       && p->chordEditor.getEdits().group == ChordGroup::Sevenths,
+                   "a dropped .mid sets Key, Scale, Custom progression and edits; keys C D E F play its chords (" + juce::String (result.message) + ")");
+            juce::MemoryBlock garbage ("not midi", 8);
+            const auto bad = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("chordism-snapshot-bad.mid");
+            bad.replaceWithData (garbage.getData(), garbage.getSize());
+            const auto refused = p->importMidiFile (bad);
+            bad.deleteFile();
+            check (! refused.ok && (int) get (*p, params::progression) == (int) Progression::Custom, "a file that isn't MIDI is refused, nothing changes ("
+                                                                                                      + juce::String (refused.message) + ")");
+        }
+
+        std::cout << "== Export ==\n";
+        {
+            auto p = std::make_unique<ChordismProcessor>();
+            PlayHead head;
+            p->setPlayHead (&head);
+            p->prepareToPlay (48000.0, 512);
+            set (*p, params::testPattern, 1.0f);
+            set (*p, params::port, 0.0f);
+            std::unique_ptr<juce::AudioProcessorEditor> base (p->createEditorIfNeeded());
+            auto* editor = dynamic_cast<ChordismEditor*> (base.get());
+            juce::String error;
+            const bool emptyAtFirst = ! p->writeExport (error).existsAsFile();
+            head.playing = true;
+            while (head.ppq < 9.0)
+            {
+                block (*p, {});
+                head.ppq += 512.0 / 24000.0;
+            }
+            editor->refreshNow();
+            const auto file = p->writeExport (error);
+            MidiSong song;
+            std::string readError;
+            juce::MemoryBlock data;
+            file.loadFileAsData (data);
+            const bool read = readMidiFile ((const uint8_t*) data.getData(), data.getSize(), song, readError);
+            check (emptyAtFirst && file.existsAsFile() && read && song.notes.size() == 24 && song.ppq == 960 && song.notes.front().start == 0
+                       && song.notes.back().start == 7 * 960 && file.getFileName() == "Chordism C Major 2 bars.mid",
+                   "after 2.25 bars playing, the handle exports 2 bars (8 chords) as " + file.getFileName());
+            head.playing = false;
+            block (*p, {});
+            editor = nullptr;
+            base.reset();
+            p->setPlayHead (nullptr);
+        }
+
+        std::cout << "== QWERTY ==\n";
+        {
+            using Q = ChordismEditor::Qwerty;
+            check (ChordismEditor::qwertyNote (Q::Piano, 'a', 60, 0) == 48 && ChordismEditor::qwertyNote (Q::Piano, 'w', 60, 0) == 49
+                       && ChordismEditor::qwertyNote (Q::Piano, 'j', 60, 0) == 59 && ChordismEditor::qwertyNote (Q::Piano, 'k', 60, 0) == 60
+                       && ChordismEditor::qwertyNote (Q::Piano, '\'', 60, 0) == 65 && ChordismEditor::qwertyNote (Q::Piano, 'A', 60, 1) == 60
+                       && ChordismEditor::qwertyNote (Q::Piano, 'q', 60, 0) == -1 && ChordismEditor::qwertyNote (Q::Off, 'a', 60, 0) == -1,
+                   "Piano layout: A-J the chord zone from the C below the split, K the split's C, W the first shifter; an octave up moves it");
+            check (ChordismEditor::qwertyNote (Q::TwoRows, 'z', 60, 0) == 48 && ChordismEditor::qwertyNote (Q::TwoRows, 'q', 60, 0) == 60
+                       && ChordismEditor::qwertyNote (Q::TwoRows, '2', 60, 0) == 61 && ChordismEditor::qwertyNote (Q::TwoRows, 'm', 60, 0) == 59
+                       && ChordismEditor::qwertyNote (Q::TwoRows, 'p', 64, 0) == 76,
+                   "Two rows: Z-M the octave below the split, Q-P the split's (from its C)");
+
+            auto p = std::make_unique<ChordismProcessor>();
+            p->prepareToPlay (48000.0, 512);
+            std::unique_ptr<juce::AudioProcessorEditor> base (p->createEditorIfNeeded());
+            auto* editor = dynamic_cast<ChordismEditor*> (base.get());
+            editor->keyPressed (juce::KeyPress ('d', 0, 'd'));
+            const auto chord = noteOns (block (*p, {}));
+            editor->keyStateChanged (false);   // the key isn't down: its note-off
+            const auto release = block (*p, {});
+            check (chord == std::vector<int> { 52, 55, 59 } && noteOffs (release) == 3, "pressing D on the computer keyboard plays chord 3 (Em) and releasing it ends it");
+        }
     }
 }
 
@@ -270,6 +504,8 @@ int main (int argc, char** argv)
     check ((int) get (*migrated, params::seqSteps (1)) == 0x0003 && (int) get (*migrated, params::seqSteps (2)) == 0x8000
                && (int) get (*migrated, params::seqSteps (0)) == (int) defaultSeqPatterns()[0],
            "a pre-Phase 4 state's step bools become the packed patterns (missing patterns keep their defaults)");
+
+    testPhase6();
 
     std::cout << (failures == 0 ? "\nsnapshot: all passed\n" : "\n*** snapshot: " + std::to_string (failures) + " failure(s)\n");
     return failures == 0 ? 0 : 1;

@@ -44,6 +44,12 @@
         <FILE id="cfF037" name="ChordFx.h" compile="0" resource="0" file="../Source/core/engine/ChordFx.h"/>
         <FILE id="cfF038" name="ScaleMapper.h" compile="0" resource="0" file="../Source/core/engine/ScaleMapper.h"/>
         <FILE id="cfF039" name="PatternEngine.h" compile="0" resource="0" file="../Source/core/engine/PatternEngine.h"/>
+        <FILE id="cfF051" name="Melody.h" compile="0" resource="0" file="../Source/core/engine/Melody.h"/>
+      </GROUP>
+      <GROUP id="cfF0Grp4" name="core/midiio">
+        <FILE id="cfF052" name="MidiFile.h" compile="0" resource="0" file="../Source/core/midiio/MidiFile.h"/>
+        <FILE id="cfF053" name="ExportRecorder.h" compile="0" resource="0" file="../Source/core/midiio/ExportRecorder.h"/>
+        <FILE id="cfF054" name="ChordImporter.h" compile="0" resource="0" file="../Source/core/midiio/ChordImporter.h"/>
       </GROUP>
       <GROUP id="cfGrp2" name="plugin">
         <FILE id="cfF011" name="ChordismProcessor.h" compile="0" resource="0" file="../Source/plugin/ChordismProcessor.h"/>
@@ -54,6 +60,10 @@
         <FILE id="cfF016" name="VirtualMidiOut.cpp" compile="1" resource="0" file="../Source/plugin/VirtualMidiOut.cpp"/>
         <FILE id="cfF025" name="ChordEditorState.h" compile="0" resource="0" file="../Source/plugin/ChordEditorState.h"/>
         <FILE id="cfF026" name="ChordEditorState.cpp" compile="1" resource="0" file="../Source/plugin/ChordEditorState.cpp"/>
+        <FILE id="cfF055" name="PresetManager.h" compile="0" resource="0" file="../Source/plugin/PresetManager.h"/>
+        <FILE id="cfF056" name="PresetManager.cpp" compile="1" resource="0" file="../Source/plugin/PresetManager.cpp"/>
+        <FILE id="cfF057" name="FactoryPresets.h" compile="0" resource="0" file="../Source/plugin/FactoryPresets.h"/>
+        <FILE id="cfF058" name="FactoryPresets.cpp" compile="1" resource="0" file="../Source/plugin/FactoryPresets.cpp"/>
       </GROUP>
       <GROUP id="cfGrp3" name="ui">
         <FILE id="cfF017" name="ChordismEditor.h" compile="0" resource="0" file="../Source/ui/ChordismEditor.h"/>
@@ -68,6 +78,8 @@
         <FILE id="cfF048" name="ChordEditorPanel.cpp" compile="1" resource="0" file="../Source/ui/ChordEditorPanel.cpp"/>
         <FILE id="cfF049" name="Panels.h" compile="0" resource="0" file="../Source/ui/Panels.h"/>
         <FILE id="cfF050" name="Panels.cpp" compile="1" resource="0" file="../Source/ui/Panels.cpp"/>
+        <FILE id="cfF059" name="PresetBar.h" compile="0" resource="0" file="../Source/ui/PresetBar.h"/>
+        <FILE id="cfF060" name="PresetBar.cpp" compile="1" resource="0" file="../Source/ui/PresetBar.cpp"/>
       </GROUP>
     </GROUP>
   </MAINGROUP>

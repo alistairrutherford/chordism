@@ -57,8 +57,10 @@ namespace chordism::ui
     }
 
     //==========================================================================
-    TopBar::TopBar (Bindings& b, std::function<void()> openSetup, std::function<void (bool)> showKeyboard)
-        : enable (b, params::enable, "On"), key (b, params::key), scale (b, params::scale), progression (b, params::progression),
+    TopBar::TopBar (ChordismProcessor& p, Bindings& b, std::function<void()> openSetup, std::function<void (bool)> showKeyboard,
+                    std::function<void (const juce::File&)> importMidi)
+        : presets (p, std::move (importMidi)), exportHandle (p),
+          enable (b, params::enable, "On"), key (b, params::key), scale (b, params::scale), progression (b, params::progression),
           group (b, params::chordGroup), mapping (b, params::mapping), shifterMode (b, params::shifterMode, "Shifters")
     {
         logo.setTooltip ("Setup: split, custom progression, shifter targets, virtual port, test pattern");
@@ -73,9 +75,17 @@ namespace chordism::ui
         for (auto* c : { &enable, &key, &scale, &progression, &group, &mapping, &shifterMode })
             addAndMakeVisible (c);
         mapping.setAccent (colours::smart);
+        addAndMakeVisible (presets);
+        addAndMakeVisible (exportHandle);
     }
 
     void TopBar::setKeyboardShown (bool shown) { keyboardButton.setToggleState (shown, juce::dontSendNotification); }
+
+    void TopBar::refresh()
+    {
+        presets.refresh();
+        exportHandle.refresh();
+    }
 
     void TopBar::paint (juce::Graphics& g)
     {
@@ -88,14 +98,19 @@ namespace chordism::ui
     void TopBar::resized()
     {
         auto r = getLocalBounds().reduced (8, 4);
-        logo.setBounds (r.removeFromLeft (96).withSizeKeepingCentre (96, 30));
+        logo.setBounds (r.removeFromLeft (84).withSizeKeepingCentre (84, 30));
         logo.setButtonText ("Chordism");
         r.removeFromLeft (6);
-        enable.setBounds (r.removeFromLeft (46).withTrimmedTop (14));
-        keyboardButton.setBounds (r.removeFromRight (82).withTrimmedTop (14).withTrimmedBottom (0));
+        enable.setBounds (r.removeFromLeft (40).withTrimmedTop (14));
+        r.removeFromLeft (4);
+        presets.setBounds (r.removeFromLeft (juce::jlimit (170, 250, r.getWidth() / 4)));
+        r.removeFromLeft (4);
+        keyboardButton.setBounds (r.removeFromRight (52).withTrimmedTop (14).withTrimmedBottom (0));
         r.removeFromRight (6);
-        const struct { ParamControl* c; int w; } cols[] = { { &key, 74 }, { &scale, 130 }, { &progression, 170 }, { &group, 130 },
-                                                            { &mapping, 112 }, { &shifterMode, 96 } };
+        exportHandle.setBounds (r.removeFromRight (78));
+        r.removeFromRight (4);
+        const struct { ParamControl* c; int w; } cols[] = { { &key, 66 }, { &scale, 118 }, { &progression, 150 }, { &group, 118 },
+                                                            { &mapping, 104 }, { &shifterMode, 90 } };
         int total = 0;
         for (const auto& c : cols)
             total += c.w;
@@ -152,9 +167,11 @@ namespace chordism::ui
 
     //==========================================================================
     SmartPanel::SmartPanel (Bindings& b)
-        : bindings (b), arp (b, params::patternArp (0), "Arp"), rate (b, params::patternRate (0), "Rate"),
+        : bindings (b), arp (b, params::patternArp (0), "Pattern"), rate (b, params::patternRate (0), "Rate"),
           range (b, params::patternRange (0), "Range"), chord (b, params::patternChord (0), "Arp chord"),
-          gate (b, params::patternGate (0), "Gate"), fx (b, 5, colours::smart), steps (b, colours::smart)
+          gate (b, params::patternGate (0), "Gate"), notes (b, params::patternNotes (0), "Notes/bar"),
+          rhythm (b, params::patternRhythm (0), "Rhythm"), swing (b, params::melodySwing, "Melody swing"),
+          seed (b, params::melodySeed, "Seed"), fx (b, 5, colours::smart), steps (b, colours::smart)
     {
         caption (patternCaption, "PATTERN", colours::faint);
         addAndMakeVisible (patternCaption);
@@ -168,11 +185,16 @@ namespace chordism::ui
             addAndMakeVisible (button);
         }
         bindings.bound (params::patternSlot);
-        for (auto* c : { &arp, &rate, &range, &chord, &gate })
+        for (auto* c : { &arp, &rate, &range, &chord, &gate, &notes, &rhythm, &swing, &seed })
         {
             c->setAccent (colours::smart);
             addAndMakeVisible (c);
         }
+        notes.setVisible (false);
+        rhythm.setVisible (false);
+        arp.setTooltip ("The slot's arp pattern, or Melody: a seeded melody over the current chord");
+        swing.setTooltip ("Melody mode: pushes the even sixteenths later (all slots)");
+        seed.setTooltip ("Melody mode: the same seed always plays the same melody at the same place (all slots; each slot varies it)");
 
         fx.addSection ("Smart Scale effects");
         fx.add (params::smartStack, "Stack");
@@ -198,11 +220,13 @@ namespace chordism::ui
         if (slot == slotShown)
             return;
         slotShown = slot;
-        arp.bind (params::patternArp (slot), "Arp");
+        arp.bind (params::patternArp (slot), "Pattern");
         rate.bind (params::patternRate (slot), "Rate");
         range.bind (params::patternRange (slot), "Range");
-        chord.bind (params::patternChord (slot), "Arp chord");
+        chord.bind (params::patternChord (slot), melodyShown ? "Chord tones" : "Arp chord");
         gate.bind (params::patternGate (slot), "Gate");
+        notes.bind (params::patternNotes (slot), "Notes/bar");
+        rhythm.bind (params::patternRhythm (slot), "Rhythm");
         for (int s = 0; s < numPatternSlots; ++s)
             slotButtons[s]->setToggleState (s == slot, juce::dontSendNotification);
     }
@@ -210,6 +234,16 @@ namespace chordism::ui
     void SmartPanel::refresh (const UiModel& m)
     {
         bindSlot (m.settings.smart.patternSlot);
+        const bool melody = m.settings.smart.patterns[(size_t) juce::jlimit (0, numPatternSlots - 1, slotShown)].melody;
+        if (melody != melodyShown)
+        {
+            melodyShown = melody;
+            rate.setVisible (! melody);
+            notes.setVisible (melody);
+            rhythm.setVisible (melody);
+            chord.bind (chord.getParamId(), melody ? "Chord tones" : "Arp chord");
+            resized();
+        }
         steps.bind (params::smartSeqSteps (m.settings.smart.seq.pattern));
     }
 
@@ -224,14 +258,28 @@ namespace chordism::ui
         auto r = getLocalBounds();
         auto head = r.removeFromTop (ParamGrid::sectionHeight);
         patternCaption.setBounds (head.removeFromLeft (70));
-        auto buttons = r.removeFromTop (ParamGrid::rowHeight).reduced (4, 8);
+        auto top = r.removeFromTop (ParamGrid::rowHeight);
+        const int globalsWidth = top.getWidth() * 2 / 5;
+        auto globals = top.removeFromRight (globalsWidth);
+        swing.setBounds (globals.removeFromLeft (globalsWidth / 2).reduced (4, 2));
+        seed.setBounds (globals.reduced (4, 2));
+        auto buttons = top.reduced (4, 8);
         const int bw = buttons.getWidth() / numPatternSlots;
         for (int s = 0; s < numPatternSlots; ++s)
             slotButtons[s]->setBounds (buttons.removeFromLeft (bw).reduced (3, 0));
         auto row = r.removeFromTop (ParamGrid::rowHeight);
-        const int w = row.getWidth() / 5;
-        for (auto* c : { &arp, &rate, &range, &chord, &gate })
-            c->setBounds (row.removeFromLeft (w).reduced (4, 2));
+        if (melodyShown)
+        {
+            const int w = row.getWidth() / 6;
+            for (auto* c : { &arp, &notes, &rhythm, &range, &chord, &gate })
+                c->setBounds (row.removeFromLeft (w).reduced (4, 2));
+        }
+        else
+        {
+            const int w = row.getWidth() / 5;
+            for (auto* c : { &arp, &rate, &range, &chord, &gate })
+                c->setBounds (row.removeFromLeft (w).reduced (4, 2));
+        }
         r.removeFromTop (6);
         fx.setBounds (r.removeFromTop (ParamGrid::sectionHeight + 2 * ParamGrid::rowHeight));
         auto s = r.removeFromTop (30).reduced (4, 2);
@@ -280,6 +328,18 @@ namespace chordism::ui
         right.add (params::testSmart);
         addAndMakeVisible (right);
 
+        caption (prefsCaption, "PREFERENCES", colours::faint);
+        addAndMakeVisible (prefsCaption);
+        caption (qwertyCaption, "QWERTY keys");
+        addAndMakeVisible (qwertyCaption);
+        qwerty.addItem ("Off", 1);
+        qwerty.addItem ("Piano: A row (Z / X octave)", 2);
+        qwerty.addItem ("Two rows: Z row and Q row", 3);
+        qwerty.setSelectedId (juce::jlimit (1, 3, (int) processor.uiState.getProperty ("qwerty", 2)), juce::dontSendNotification);
+        qwerty.onChange = [this] { processor.uiState.setProperty ("qwerty", qwerty.getSelectedId(), nullptr); };
+        qwerty.setTooltip ("Play Chordism from the computer keyboard while its window has the focus");
+        addAndMakeVisible (qwerty);
+
         portStatus.setFont (font (11.0f));
         portStatus.setColour (juce::Label::textColourId, colours::dim);
         portStatus.setJustificationType (juce::Justification::topLeft);
@@ -308,6 +368,10 @@ namespace chordism::ui
         left.setBounds (a);
         shifters.setBounds (r);
         right.setBounds (c.removeFromTop (2 * ParamGrid::sectionHeight + 4 * ParamGrid::rowHeight));
+        prefsCaption.setBounds (c.removeFromTop (ParamGrid::sectionHeight).reduced (4, 0));
+        auto q = c.removeFromTop (ParamGrid::rowHeight).reduced (4, 2);
+        qwertyCaption.setBounds (q.removeFromTop (14));
+        qwerty.setBounds (q);
         portStatus.setBounds (c.reduced (4, 6));
     }
 }

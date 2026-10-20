@@ -21,7 +21,7 @@
 // register, so a lower pitch can sit to the right of a higher one.
 //
 // The pattern keys (black) play the chord's stacked thirds from R in their octave
-// (chordTones). Plain C++, no allocation.
+// (chordTones), or a melody (melodyTone). Plain C++, no allocation.
 #pragma once
 
 #include "../theory/ChordModel.h"
@@ -30,6 +30,7 @@
 #include "Stack.h"
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 
 namespace chordism
 {
@@ -158,8 +159,43 @@ namespace chordism
             return v;
         }
 
+        // A melody note's pitch (Melody.h) for a pattern key `note`: scale index `index` from the
+        // tonic in the key's octave. A `strong` note moves to the nearest chord tone (the first
+        // `count` stacked thirds from R, as chordTones; the lower one on a tie). A tone that is
+        // a step of the chord (scale index d + 2k) takes that step's accidental when it's on.
+        int melodyTone (int note, int index, bool strong, int count) const noexcept
+        {
+            if (note < 0 || note > 127)
+                return -1;
+            const int d = chord.slot.degree;
+            if (strong)
+            {
+                for (int delta : { 0, -1, 1, -2, 2, -3, 3 })
+                    if (isChordTone (index + delta - d, count))
+                    {
+                        index += delta;
+                        break;
+                    }
+            }
+            const int rel = (((index - d) % 7) + 7) % 7;
+            return valid (octaveC (note) + chord.key + scaleOffset (chord.scale, index) + accidental ((4 * rel) % 7));
+        }
+
     private:
         static int valid (int p) noexcept { return p >= 0 && p < 128 ? p : -1; }
+
+        // Scale index `rel` above R is one of the chord's first `count` stacked thirds (2 = root
+        // and 5th).
+        static bool isChordTone (int rel, int count) noexcept
+        {
+            rel = ((rel % 7) + 7) % 7;
+            if (count <= 2)
+                return rel == 0 || rel == 4;
+            for (int k = 0; k < count && k < numChordSteps; ++k)
+                if ((2 * k) % 7 == rel)
+                    return true;
+            return false;
+        }
 
         // The C of the key's octave, moved by the Smart Octave.
         int octaveC (int note) const noexcept { return 12 * (note / 12) + 12 * settings.octave; }

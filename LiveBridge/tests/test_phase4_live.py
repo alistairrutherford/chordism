@@ -35,7 +35,7 @@ from livebridge import timing
 MAPPING = ["Chord Tones", "Dynamic", "Relative", "Absolute", "Chromatic"]
 TEST_SMART = ["Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5"]
 SLOTS = ["1", "2", "3", "4", "5"]
-PATTERN_ARP = ARP[1:]
+PATTERN_ARP = ARP[1:] + ["Melody"]   # Phase 6 appended Melody to the pattern slots' list
 ARP_CHORD = ["5ths", "Triads", "7ths", "9ths", "11ths", "13ths"]
 
 MAJOR = [0, 2, 4, 5, 7, 9, 11]

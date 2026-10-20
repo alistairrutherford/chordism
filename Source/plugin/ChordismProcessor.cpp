@@ -201,6 +201,7 @@ namespace chordism
 
         output.clear();
         engine.process (settings, edits, transport, input.begin(), input.size(), numSamples, output);
+        recorder.record (transport, numSamples, output.begin(), output.size());
 
         const bool toPort = port.isOpen() && snapshot.portEnabled();
         const PortTiming timing { transport.sampleRate, snapshot.portCompensation(), snapshot.portTrim() };
@@ -265,6 +266,22 @@ namespace chordism
     //==========================================================================
     void ChordismProcessor::timerCallback()
     {
+        // A program the host chose off the message thread.
+        if (const int program = pendingProgram.exchange (-1); program >= 0)
+            loadProgram (program);
+
+        // The test rig's takes, for LiveBridge.
+        if (snapshot.engineSettings().testPattern)
+        {
+            const auto info = recorder.info();
+            if (info.take != 0 && ! info.recording && info.take != testTakeWritten && info.completedBars() > 0)
+            {
+                testTakeWritten = info.take;
+                juce::String error;
+                writeTake (testTakeFile(), error);
+            }
+        }
+
         // Choosing a Chord Group resets the Chord Editor's edits.
         chordEditor.sync (snapshot.chordGroup(), engine.getEditsDiscarded(), engine.getDiscardedVersion());
         if (const auto v = chordEditor.getVersion(); v != notifiedEditsVersion.exchange (v))
@@ -308,6 +325,152 @@ namespace chordism
              + juce::String (sr / 1000.0, 1) + " kHz)";
     }
 
+    //==========================================================================
+    // Programs and presets.
+
+    int ChordismProcessor::getNumPrograms() { return (int) factoryPresets().size(); }
+
+    const juce::String ChordismProcessor::getProgramName (int index)
+    {
+        const auto& all = factoryPresets();
+        return index >= 0 && index < (int) all.size() ? all[(size_t) index].name : juce::String();
+    }
+
+    void ChordismProcessor::setCurrentProgram (int index)
+    {
+        if (index < 0 || index >= getNumPrograms())
+            return;
+        currentProgram = index;
+        if (juce::MessageManager::existsAndIsCurrentThread())
+            loadProgram (index);
+        else
+            pendingProgram = index;       // the timer loads it
+    }
+
+    void ChordismProcessor::loadProgram (int index)
+    {
+        const auto& p = factoryPresets()[(size_t) juce::jlimit (0, getNumPrograms() - 1, index)];
+        applyPreset (PresetManager::factoryTree (index), p.category, p.name);
+        currentProgram = index;
+    }
+
+    void ChordismProcessor::applyPreset (const juce::ValueTree& preset, const juce::String& category, const juce::String& name)
+    {
+        auto tree = preset.createCopy();
+        migrateSeqSteps (tree);
+        for (auto* p : getParameters())
+        {
+            auto* param = dynamic_cast<juce::RangedAudioParameter*> (p);
+            if (param == nullptr || ! params::isPresetParameter (param->paramID))
+                continue;
+            const auto child = tree.getChildWithProperty ("id", param->paramID);
+            const float value = child.isValid() ? param->convertTo0to1 ((float) (double) child.getProperty ("value"))
+                                                : param->getDefaultValue();
+            if (std::abs (param->getValue() - value) > 1.0e-6f)
+                param->setValueNotifyingHost (value);
+        }
+        chordEditor.restore (tree.getChildWithName (ChordEditorState::treeType), snapshot.chordGroup());
+        engine.requestReset();            // all notes off on a preset change (PLAN.md §5)
+        setPresetIdentity (category, name);
+    }
+
+    juce::ValueTree ChordismProcessor::presetState()
+    {
+        juce::ValueTree tree ("Chordism");
+        for (const auto& child : state.copyState())
+            if (child.hasType ("PARAM") && params::isPresetParameter (child.getProperty ("id").toString()))
+                tree.appendChild (child.createCopy(), nullptr);
+        tree.appendChild (chordEditor.copyTree(), nullptr);
+        tree.setProperty ("version", JucePlugin_VersionString, nullptr);
+        return tree;
+    }
+
+    void ChordismProcessor::setPresetIdentity (const juce::String& category, const juce::String& name)
+    {
+        presetCategory = category;
+        presetName = name;
+        notifyStateChanged();
+    }
+
+    //==========================================================================
+    // MIDI import and export.
+
+    ChordImport ChordismProcessor::importMidiFile (const juce::File& file)
+    {
+        ChordImport result;
+        juce::MemoryBlock data;
+        if (! file.loadFileAsData (data))
+        {
+            result.message = "Couldn't read " + file.getFileName().toStdString();
+            return result;
+        }
+        MidiSong song;
+        std::string error;
+        if (! readMidiFile ((const uint8_t*) data.getData(), data.getSize(), song, error))
+        {
+            result.message = file.getFileName().toStdString() + ": " + error;
+            return result;
+        }
+        result = importMidi (song);
+        if (! result.ok)
+            return result;
+
+        auto set = [this] (const juce::String& id, float plain)
+        {
+            if (auto* param = state.getParameter (id))
+                param->setValueNotifyingHost (param->convertTo0to1 (plain));
+        };
+        set (params::key, (float) result.key);
+        set (params::scale, (float) (int) result.scale);
+        set (params::chordOctave, (float) result.chordOctave);
+        for (int n = 0; n < numChordSlots; ++n)
+            set (params::customDegree (n), (float) result.order[(size_t) n]);
+        set (params::progression, (float) (int) Progression::Custom);
+        chordEditor.setImported (snapshot.chordGroup(), result.degrees);
+        setPresetIdentity ("Imported", file.getFileNameWithoutExtension());
+        return result;
+    }
+
+    juce::File ChordismProcessor::testTakeFile()
+    {
+        return juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Chordism").getChildFile ("Exports").getChildFile ("Test take.mid");
+    }
+
+    bool ChordismProcessor::writeTake (const juce::File& file, juce::String& error) const
+    {
+        TakeInfo info;
+        std::vector<RecordedEvent> events;
+        bool copied = false;
+        for (int attempt = 0; attempt < 4 && ! copied; ++attempt)
+            copied = recorder.snapshot (info, events);
+        if (! copied || info.completedBars() <= 0)
+        {
+            error = "Nothing to export yet: play at least one whole bar.";
+            return false;
+        }
+        const auto song = exportBars (info, events);
+        const auto bytes = writeMidiFile (song);
+        file.getParentDirectory().createDirectory();
+        if (! file.replaceWithData (bytes.data(), bytes.size()))
+        {
+            error = "Couldn't write " + file.getFullPathName();
+            return false;
+        }
+        return true;
+    }
+
+    juce::File ChordismProcessor::writeExport (juce::String& error)
+    {
+        const auto info = recorder.info();
+        const int bars = juce::jmin (info.completedBars(), ExportRecorder::maxBars);
+        const auto s = snapshot.engineSettings();
+        const juce::String name = "Chordism " + juce::String (keyName (s.key)).upToFirstOccurrenceOf ("/", false, false) + " "
+                                + scaleInfo (s.scale).name + " " + juce::String (bars) + (bars == 1 ? " bar" : " bars");
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Chordism Export")
+                              .getChildFile (juce::File::createLegalFileName (name) + ".mid");
+        return writeTake (file, error) ? file : juce::File();
+    }
+
     juce::AudioProcessorEditor* ChordismProcessor::createEditor()
     {
         return new ChordismEditor (*this);
@@ -319,6 +482,9 @@ namespace chordism
         tree.appendChild (chordEditor.copyTree(), nullptr);
         tree.appendChild (uiState.createCopy(), nullptr);
         tree.setProperty ("portIndex", port.isOpen() ? port.getIndex() : savedPortIndex, nullptr);
+        tree.setProperty ("program", currentProgram.load(), nullptr);
+        tree.setProperty ("presetName", presetName, nullptr);
+        tree.setProperty ("presetCategory", presetCategory, nullptr);
         tree.setProperty ("version", JucePlugin_VersionString, nullptr);
         if (auto xml = tree.createXml())
             copyXmlToBinary (*xml, destData);
@@ -332,6 +498,9 @@ namespace chordism
 
         auto tree = juce::ValueTree::fromXml (*xml);
         savedPortIndex = tree.getProperty ("portIndex", 0);
+        currentProgram = juce::jlimit (0, getNumPrograms() - 1, (int) tree.getProperty ("program", 0));
+        presetName = tree.getProperty ("presetName", presetName).toString();
+        presetCategory = tree.getProperty ("presetCategory", presetCategory).toString();
         const auto edits = tree.getChildWithName (ChordEditorState::treeType);
         tree.removeChild (edits, nullptr);
         const auto ui = tree.getChildWithName (uiState.getType());
@@ -345,7 +514,18 @@ namespace chordism
         migrateSeqSteps (tree);
 
         // Parameters first, then the edits (made on the restored Chord Group): see run().
+        pendingProgram = -1;              // a restore replaces a program change still waiting
         state.replaceState (tree);
+
+        // APVTS leaves a parameter alone when its value rounds to the saved one (a bool a host
+        // set to 0.3 is already "off"), so the host's raw value would survive the restore:
+        // set each saved one exactly. (APVTS adds a child without a value for a parameter the
+        // state doesn't have; that one keeps its value.)
+        for (auto* p : getParameters())
+            if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (p))
+                if (const auto child = tree.getChildWithProperty ("id", param->paramID); child.hasProperty ("value"))
+                    if (const float v = param->convertTo0to1 ((float) (double) child.getProperty ("value")); std::abs (param->getValue() - v) > 1.0e-6f)
+                        param->setValueNotifyingHost (v);
         chordEditor.restore (edits, snapshot.chordGroup());
         notifiedEditsVersion = chordEditor.getVersion();   // a restore isn't a change to report
     }

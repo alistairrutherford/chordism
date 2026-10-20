@@ -4,14 +4,22 @@
 // Chordism.jucer, and the AU MIDI effect (`aumi`, Logic) from MidiFX/ChordismMidiFX.jucer,
 // where JucePlugin_IsMidiEffect is 1. Generated MIDI goes to the host's MIDI output and, when
 // "Virtual port" is on, to the CoreMIDI port "Chordism Out <n>".
+//
+// Phase 6: an ExportRecorder keeps what Chordism sends while the host plays (Export drag-out);
+// MIDI files import as chords (ChordImporter); presets (PresetManager) load on the message
+// thread, and the factory presets are also the plug-in's programs (program 0 = Init), which a
+// host may change from another thread: that load waits for the timer.
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../core/engine/ChordismEngine.h"
 #include "../core/engine/PortTiming.h"
 #include "../core/engine/SnapshotExchange.h"
+#include "../core/midiio/ChordImporter.h"
+#include "../core/midiio/ExportRecorder.h"
 #include "ChordEditorState.h"
 #include "Parameters.h"
+#include "PresetManager.h"
 #include "VirtualMidiOut.h"
 #include <atomic>
 
@@ -57,10 +65,11 @@ namespace chordism
         bool isMidiEffect() const override { return JucePlugin_IsMidiEffect != 0; }
         double getTailLengthSeconds() const override { return 0.0; }
 
-        int getNumPrograms() override { return 1; }
-        int getCurrentProgram() override { return 0; }
-        void setCurrentProgram (int) override {}
-        const juce::String getProgramName (int) override { return {}; }
+        // The factory presets (Init first).
+        int getNumPrograms() override;
+        int getCurrentProgram() override { return currentProgram.load(); }
+        void setCurrentProgram (int) override;
+        const juce::String getProgramName (int) override;
         void changeProgramName (int, const juce::String&) override {}
 
         void getStateInformation (juce::MemoryBlock& destData) override;
@@ -87,6 +96,27 @@ namespace chordism
 
         // Editor preferences saved with the plug-in (page shown, keyboard shown). Message thread.
         juce::ValueTree uiState { "UI" };
+
+        //==========================================================================
+        // Presets (message thread). applyPreset sets every preset parameter (the preset's value,
+        // or the default if it has none) and the Chord Editor's edits, and ends every note.
+        PresetManager presets { *this };
+        void applyPreset (const juce::ValueTree& preset, const juce::String& category, const juce::String& name);
+        juce::ValueTree presetState();
+        const juce::String& getPresetName() const noexcept { return presetName; }
+        const juce::String& getPresetCategory() const noexcept { return presetCategory; }
+        void setPresetIdentity (const juce::String& category, const juce::String& name);
+
+        // MIDI import (message thread): a .mid's chords become the chord zone's (ChordImporter.h).
+        ChordImport importMidiFile (const juce::File& file);
+
+        // Export (message thread): the last ≤ 32 completed bars, written to a temporary .mid
+        // for a drag. An invalid File (and `error`) if there's nothing to export yet.
+        TakeInfo exportInfo() const noexcept { return recorder.info(); }
+        juce::File writeExport (juce::String& error);
+
+        // While the Test pattern is on, each finished take is also written here (LiveBridge reads it).
+        static juce::File testTakeFile();
 
         // Status for the editor and tests (written by the audio thread).
         juce::String getPortStatus() const;
@@ -134,6 +164,13 @@ namespace chordism
         Transport lastTransport;
         SnapshotExchange<ChordDisplay> display;
         ChordDisplay lastDisplay;
+
+        ExportRecorder recorder;
+        uint32_t testTakeWritten = 0;
+        juce::String presetName { "Init" }, presetCategory { "Init" };
+        std::atomic<int> currentProgram { 0 }, pendingProgram { -1 };
+        void loadProgram (int index);
+        bool writeTake (const juce::File& file, juce::String& error) const;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordismProcessor)
     };

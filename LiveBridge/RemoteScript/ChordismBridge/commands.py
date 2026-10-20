@@ -622,6 +622,47 @@ class Commands:
         info["notes"] = notes
         return info
 
+    # -- plug-in presets and clip files (Phase 6) ---------------------------
+
+    def cmd_get_presets(self, track, device):
+        """A plug-in's presets (its programs, as Live lists them) and the selected one."""
+        d = self._device(self._track(track), device)
+        return {"device": d.name,
+                "presets": _safe(lambda: [str(p) for p in d.presets], []),
+                "selected": _safe(lambda: int(d.selected_preset_index), -1)}
+
+    def cmd_set_preset(self, track, device, preset):
+        """Select a plug-in preset by index or name (Live sends the program change)."""
+        d = self._device(self._track(track), device)
+        names = _safe(lambda: [str(p) for p in d.presets], [])
+        if not names:
+            raise CommandError("%r lists no presets" % d.name)
+        if isinstance(preset, int) or (isinstance(preset, str) and preset.isdigit()):
+            index = int(preset)
+        else:
+            lowered = [n.lower() for n in names]
+            if str(preset).lower() not in lowered:
+                raise CommandError("%r has no preset %r; presets: %s" % (d.name, preset, names))
+            index = lowered.index(str(preset).lower())
+        if not 0 <= index < len(names):
+            raise CommandError("preset index %d out of range (%d presets)" % (index, len(names)))
+        d.selected_preset_index = index
+        return self.cmd_get_presets(track, device)
+
+    def cmd_load_clip_file(self, name, category="user_library"):
+        """Load a MIDI file from Live's browser (e.g. the User Library), as a double-click or a
+        drop would: Live imports it as a session clip on a new MIDI track. Returns the track
+        count before; the client polls get_state for the new track and get_clip_notes for its
+        clip."""
+        hits = self._search(name, category)
+        exact = [h for h in hits if h["exact"]]
+        pool = exact or hits
+        if not pool:
+            raise CommandError("nothing named %r in browser.%s (Live may still be indexing it)" % (name, category))
+        before = len(self._tracks())
+        self._app().browser.load_item(pool[0]["_item"])
+        return {"track_count_before": before, "loaded": self._public(pool[0])}
+
     # -- meters ------------------------------------------------------------
 
     def cmd_get_meters(self, tracks=None):

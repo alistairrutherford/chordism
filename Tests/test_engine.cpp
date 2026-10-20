@@ -847,7 +847,12 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
             slot.range = pick (1, 3);
             slot.chord = (ArpChord) pick (0, numArpChords - 1);
             slot.gate = unit();
+            // Phase 6: Melody mode.
+            slot.melody = chance (0.4);
+            slot.notes = pick (minMelodyNotes, maxMelodyNotes);
+            slot.rhythm = (MelodyRhythm) pick (0, numMelodyRhythms - 1);
         }
+        if (chance (0.02)) { ss.melodySwing = unit(); ss.melodySeed = (uint32_t) pick (minMelodySeed, maxMelodySeed); }
         if (chance (0.03)) ss.stack = (StackMode) pick (0, numStackModes - 1);
         if (chance (0.02)) ss.seq.on = ! ss.seq.on;
         if (chance (0.03))

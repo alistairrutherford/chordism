@@ -14,6 +14,10 @@
 //                        current chord's stacked thirds (Arp Chord: 5ths … 13ths) in the key's
 //                        octave, with the slot's Pattern, Rate, Range and Gate; each step is
 //                        stacked after the pattern
+//   melody slot          a slot in Melody mode (Melody.h) plays a seeded melody over the
+//                        current chord instead: Notes per bar, Rhythm, Range, Arp Chord (the
+//                        chord tones its strong notes land on) and Gate from the slot; Swing
+//                        and Seed are shared by the five slots
 //   Chromatic mapping    every key is a tone (the key itself); there are no pattern keys
 //
 // A pattern follows chord changes at its next step without restarting; a sounding tone keeps
@@ -21,10 +25,11 @@
 // performance owns two VoiceTracker sources (384 + 2k, 385 + 2k), used in turn per strike or
 // step, so every note-off ends exactly what its key, repeat or pattern step started.
 //
-// Melody mode (P2) comes in Phase 6. Plain C++, no allocation.
+// Plain C++, no allocation.
 #pragma once
 
 #include "ChordFx.h"
+#include "Melody.h"
 #include "ScaleMapper.h"
 #include <array>
 
@@ -59,6 +64,9 @@ namespace chordism
         int range = 1;                    // octaves, 1..3
         ArpChord chord = ArpChord::Triads;
         double gate = 0.5;                // 0..1
+        bool melody = false;              // Melody mode (Phase 6): a melody instead of the arp
+        int notes = 8;                    // Melody: notes per bar, 1..16
+        MelodyRhythm rhythm = MelodyRhythm::Straight;
     };
 
     using PatternSlots = std::array<PatternSlotSettings, numPatternSlots>;
@@ -67,11 +75,11 @@ namespace chordism
     inline PatternSlots defaultPatternSlots() noexcept
     {
         return { {
-            { ArpPattern::LinearUp,     5, 1, ArpChord::Triads,   0.5 },    // 1/16
-            { ArpPattern::LinearDown,   5, 1, ArpChord::Sevenths, 0.5 },    // 1/16
-            { ArpPattern::ConvergeUp,   3, 2, ArpChord::Triads,   0.5 },    // 1/8
-            { ArpPattern::BoomerangUp,  6, 1, ArpChord::Ninths,   0.75 },   // 1/16T
-            { ArpPattern::ZigzagUp,     3, 2, ArpChord::Sevenths, 0.75 },   // 1/8
+            { ArpPattern::LinearUp,     5, 1, ArpChord::Triads,   0.5,  false, 8, MelodyRhythm::Straight },    // 1/16
+            { ArpPattern::LinearDown,   5, 1, ArpChord::Sevenths, 0.5,  false, 8, MelodyRhythm::Straight },    // 1/16
+            { ArpPattern::ConvergeUp,   3, 2, ArpChord::Triads,   0.5,  false, 8, MelodyRhythm::Straight },    // 1/8
+            { ArpPattern::BoomerangUp,  6, 1, ArpChord::Ninths,   0.75, false, 8, MelodyRhythm::Straight },    // 1/16T
+            { ArpPattern::ZigzagUp,     3, 2, ArpChord::Sevenths, 0.75, false, 8, MelodyRhythm::Straight },    // 1/8
         } };
     }
 
@@ -86,6 +94,8 @@ namespace chordism
         StepSeqSettings seq;
         VelocitySettings velocity;
         HoldMode hold = HoldMode::Off;
+        double melodySwing = 0.0;         // Melody: 0..1, all slots
+        uint32_t melodySeed = 1;          // Melody: all slots (each slot mixes in its number)
     };
 
     class PatternEngine : public PerformerVoicing
@@ -143,9 +153,20 @@ namespace chordism
         {
             if (! isPattern (slot))
                 return {};
-            const auto& p = settings.patterns[(size_t) (slot - patternFlag)];
+            const int n = slot - patternFlag;
+            const auto& p = settings.patterns[(size_t) n];
             const ArpPattern pattern = p.pattern == ArpPattern::Off ? ArpPattern::LinearUp : p.pattern;
-            return { pattern, p.rate, p.range, p.gate };
+            ArpSettings a { pattern, p.rate, p.range, p.gate, {} };
+            if (p.melody)
+                a.melody = { true, p.notes, p.rhythm, settings.melodySwing, settings.melodySeed, p.range, n, p.gate };
+            return a;
+        }
+
+        int melodyTone (int key, int slot, int index, bool strong) const noexcept override
+        {
+            if (! isPattern (slot))
+                return -1;
+            return mapper.melodyTone (key, index, strong, arpChordTones (settings.patterns[(size_t) (slot - patternFlag)].chord));
         }
 
     private:

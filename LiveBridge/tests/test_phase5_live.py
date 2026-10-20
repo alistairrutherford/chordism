@@ -37,7 +37,7 @@ SETTINGS = {
     "Progression": (2, [""] * 9),
     "Mapping": (3, [""] * 5),
     "Seq 2 steps": (0x0F0F, (0, 0xFFFF)),
-    "Pattern 3 arp": (6, [""] * 12),   # Stutter Up
+    "Pattern 3 arp": (6, [""] * 13),   # Stutter Up (13 choices since Phase 6 added Melody)
     "SS hold": (2, [""] * 3),          # Bar
     "Note repeat": (True, None),
     "Test shifter": (0, [""] * 6),

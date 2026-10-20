@@ -3,7 +3,7 @@
 // tempo and stop, feeds it keys at absolute samples, and records what comes out. `sweep` runs a
 // scenario at 32-2048-sample blocks, 44.1/48/96 kHz and three tempos; `compare` pairs the
 // output with the expected notes within a tolerance in samples. Shared by test_fx.cpp
-// (Phase 3) and test_smart.cpp (Phase 4).
+// (Phase 3), test_smart.cpp (Phase 4), test_melody.cpp and test_midiio.cpp (Phase 6).
 #pragma once
 
 #include "TestUtil.h"
@@ -49,6 +49,8 @@ namespace fakehost
         double loopStart = 0.0, loopEnd = 0.0;
         LoopStyle style = LoopStyle::Wrap;
         bool reportBarStart = false;
+        const ChordEdits* edits = nullptr;   // the Chord Editor's snapshot, if any
+        std::function<void (const Transport&, int, const BlockEvents&)> observe;   // after each block (Phase 6: Export)
 
         std::vector<std::pair<int64_t, MidiEvent>> input;
         std::vector<std::pair<int64_t, double>> tempo;   // (absolute sample, bpm), from the first block at or after it
@@ -113,7 +115,12 @@ namespace fakehost
 
                 blockStarts.push_back ({ pos, ppq });
                 out.clear();
-                engine->process (settings, t, in.data(), (int) in.size(), n, out);
+                if (edits != nullptr)
+                    engine->process (settings, *edits, t, in.data(), (int) in.size(), n, out);
+                else
+                    engine->process (settings, t, in.data(), (int) in.size(), n, out);
+                if (observe)
+                    observe (t, n, out);
                 rx.feed (out, n);
                 for (const auto& e : out)
                     if (e.isNoteOn() || e.isNoteOff())

@@ -6,6 +6,7 @@ namespace chordism
     namespace
     {
         const juce::Identifier pageId ("page"), keyboardId ("keyboard"), widthId ("width"), heightId ("height");
+        const juce::Identifier qwertyId ("qwerty"), qwertyOctaveId ("qwertyOctave");
 
         void title (juce::Label& l, const juce::String& text, juce::Colour c)
         {
@@ -17,7 +18,8 @@ namespace chordism
 
     ChordismEditor::ChordismEditor (ChordismProcessor& p)
         : AudioProcessorEditor (p), processor (p), bindings (p.state),
-          topBar (bindings, [this] { showSetup (true); }, [this] (bool shown) { showKeyboard (shown); }),
+          topBar (p, bindings, [this] { showSetup (true); }, [this] (bool shown) { showKeyboard (shown); },
+                  [this] (const juce::File& f) { importMidi (f); }),
           chordKeys (p, bindings), chordFx (bindings), chordEditorPanel (p),
           inversions (bindings, params::inversions), noteRepeat (bindings, params::noteRepeat),
           smartOctave (bindings, params::smartOctave, "Octave"), muteSmart (bindings, params::muteScale, "Mute"),
@@ -33,6 +35,12 @@ namespace chordism
                                                                  &smartKeys, &smartPanel, &outputKeys })
             addAndMakeVisible (c);
         addChildComponent (setup);
+        status.setFont (ui::font (12.0f));
+        status.setJustificationType (juce::Justification::centredLeft);
+        status.setMinimumHorizontalScale (0.6f);
+        status.setColour (juce::Label::backgroundColourId, ui::colours::background.withAlpha (0.92f));
+        addChildComponent (status);
+        setWantsKeyboardFocus (true);
         for (auto* c : { &inversions, &noteRepeat, &smartOctave, &muteSmart })
             c->setAccent (ui::colours::smart);
         smartOctave.setCaptionLeft (44);
@@ -59,6 +67,7 @@ namespace chordism
     ChordismEditor::~ChordismEditor()
     {
         stopTimer();
+        releaseQwerty();
         setLookAndFeel (nullptr);
     }
 
@@ -99,6 +108,137 @@ namespace chordism
         }
     }
 
+    void ChordismEditor::paintOverChildren (juce::Graphics& g)
+    {
+        if (! dropHover)
+            return;
+        g.setColour (ui::colours::chord.withAlpha (0.12f));
+        g.fillRect (getLocalBounds());
+        g.setColour (ui::colours::chord);
+        g.drawRect (getLocalBounds(), 3);
+        g.setFont (ui::font (18.0f, true));
+        g.drawText ("Drop a MIDI file to import its chords", getLocalBounds(), juce::Justification::centred);
+    }
+
+    //==========================================================================
+    bool ChordismEditor::isInterestedInFileDrag (const juce::StringArray& files)
+    {
+        for (const auto& f : files)
+            if (f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi"))
+                return true;
+        return false;
+    }
+
+    void ChordismEditor::filesDropped (const juce::StringArray& files, int, int)
+    {
+        dropHover = false;
+        repaint();
+        for (const auto& f : files)
+            if (f.endsWithIgnoreCase (".mid") || f.endsWithIgnoreCase (".midi"))
+            {
+                importMidi (juce::File (f));
+                return;
+            }
+    }
+
+    void ChordismEditor::importMidi (const juce::File& file)
+    {
+        const auto result = processor.importMidiFile (file);
+        showStatus (result.message, ! result.ok);
+        if (result.ok)
+        {
+            showEditorPage (chordEditorPanel.isVisible());
+            chordKeys.flash (result.count);
+        }
+    }
+
+    void ChordismEditor::showStatus (const juce::String& text, bool error)
+    {
+        statusText = text;
+        status.setText (text, juce::dontSendNotification);
+        status.setTooltip (text);
+        status.setColour (juce::Label::textColourId, error ? ui::colours::sounding : ui::colours::chord);
+        status.setVisible (text.isNotEmpty());
+        status.toFront (false);
+        statusUntil = juce::Time::getMillisecondCounterHiRes() + 8000.0;
+    }
+
+    //==========================================================================
+    int ChordismEditor::qwertyNote (Qwerty layout, juce::juce_wchar key, int split, int octave)
+    {
+        key = juce::CharacterFunctions::toLowerCase (key);
+        const auto indexIn = [key] (const char* row) { for (int i = 0; row[i] != 0; ++i) if ((juce::juce_wchar) row[i] == key) return i; return -1; };
+        const int below = split - 12 * (split >= 12 ? 1 : 0);
+        int note = -1;
+        if (layout == Qwerty::Piano)
+        {
+            if (const int i = indexIn ("awsedftgyhujkolp;'"); i >= 0)
+                note = below + 12 * octave + i;
+        }
+        else if (layout == Qwerty::TwoRows)
+        {
+            if (const int i = indexIn ("zsxdcvgbhnjm,l.;/"); i >= 0)
+                note = below + 12 * octave + i;
+            else if (const int j = indexIn ("q2w3er5t6y7ui9o0p"); j >= 0)
+                note = split + 12 * octave + j;
+        }
+        // From the C at or below: the rows start on a C.
+        if (note >= 0)
+            note -= ((split % 12) + 12) % 12;
+        return note >= 0 && note < 128 ? note : -1;
+    }
+
+    bool ChordismEditor::keyPressed (const juce::KeyPress& key)
+    {
+        const auto layout = (Qwerty) (int) processor.uiState.getProperty (qwertyId, (int) Qwerty::Piano);
+        if (layout == Qwerty::Off || key.getModifiers().isCommandDown() || key.getModifiers().isCtrlDown() || key.getModifiers().isAltDown())
+            return false;
+        const auto c = juce::CharacterFunctions::toLowerCase (key.getTextCharacter() != 0 ? key.getTextCharacter() : (juce::juce_wchar) key.getKeyCode());
+        int octave = processor.uiState.getProperty (qwertyOctaveId, 0);
+        if (layout == Qwerty::Piano && (c == 'z' || c == 'x'))
+        {
+            releaseQwerty();
+            octave = juce::jlimit (-3, 3, octave + (c == 'x' ? 1 : -1));
+            processor.uiState.setProperty (qwertyOctaveId, octave, nullptr);
+            showStatus ("QWERTY octave " + juce::String (octave > 0 ? "+" : "") + juce::String (octave), false);
+            return true;
+        }
+        const int note = qwertyNote (layout, c, bindings.state.getRawParameterValue (params::split) != nullptr
+                                                    ? (int) bindings.value (params::split) : 60, octave);
+        if (note < 0)
+            return false;
+        if (qwertyHeld.count (c) == 0)
+        {
+            qwertyHeld[c] = note;
+            processor.pushUiNote (note, 100, true);
+        }
+        return true;
+    }
+
+    bool ChordismEditor::keyStateChanged (bool)
+    {
+        bool any = false;
+        for (auto it = qwertyHeld.begin(); it != qwertyHeld.end();)
+        {
+            if (juce::KeyPress::isKeyCurrentlyDown ((int) it->first))
+            {
+                ++it;
+                continue;
+            }
+            processor.pushUiNote (it->second, 0, false);
+            it = qwertyHeld.erase (it);
+            any = true;
+        }
+        return any;
+    }
+
+    void ChordismEditor::releaseQwerty()
+    {
+        for (const auto& [key, note] : qwertyHeld)
+            processor.pushUiNote (note, 0, false);
+        qwertyHeld.clear();
+    }
+
     void ChordismEditor::resized()
     {
         auto r = getLocalBounds();
@@ -120,6 +260,7 @@ namespace chordism
         chordTitle.setBounds (head.removeFromLeft (150));
         editorPage.setBounds (head.removeFromRight (104).reduced (2, 1));
         fxPage.setBounds (head.removeFromRight (48).reduced (2, 1));
+        status.setBounds (a.getX(), a.getY() + 2, a.getWidth(), 20);   // a toast over the top of the chord keys
         chordKeys.setBounds (a.removeFromTop (keyboardHeight).reduced (0, 4));
         a.removeFromTop (6);
         chordFx.setBounds (a);
@@ -143,6 +284,15 @@ namespace chordism
 
     void ChordismEditor::timerCallback()
     {
+        if (! focusGrabbed && isShowing())
+        {
+            focusGrabbed = true;
+            grabKeyboardFocus();          // so the computer keyboard plays at once
+        }
+        if (status.isVisible() && juce::Time::getMillisecondCounterHiRes() > statusUntil)
+            status.setVisible (false);
+        topBar.refresh();
+
         ui::UiModel m;
         m.display = processor.readDisplay();
         m.settings = processor.currentSettings();

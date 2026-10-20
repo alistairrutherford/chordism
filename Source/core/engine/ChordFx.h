@@ -27,7 +27,9 @@
 // tones and each key's pattern come from a PerformerVoicing instead of the chord set, its
 // patterns stack each step after the pattern (Smart chain: Pattern → Octave → Stack), its
 // strikes keep sounding through a chord change (the next strike takes the new tones), and its
-// performances own the VoiceTracker sources from `sourceBase` on.
+// performances own the VoiceTracker sources from `sourceBase` on. A pattern in Melody mode
+// (Melody.h) runs like an arp whose steps are the melody's notes: each bar's notes come from
+// the seed, and each note's pitch from the voicing when it plays.
 //
 // Plain C++, no JUCE, no allocation.
 #pragma once
@@ -38,6 +40,7 @@
 #include "Clock.h"
 #include "EventQueue.h"
 #include "Hold.h"
+#include "Melody.h"
 #include "MidiEvents.h"
 #include "Repeat.h"
 #include "Stack.h"
@@ -74,6 +77,7 @@ namespace chordism
         int rate = 5;                     // index into the pattern rates
         int range = 1;                    // octaves, 1..3
         double gate = 0.5;                // 0..1
+        MelodySettings melody;            // melody.on: a melody instead (pattern stays not Off)
     };
 
     // Where a performer's tones come from when it isn't the chord zone's (the Smart Scale zone,
@@ -88,6 +92,10 @@ namespace chordism
 
         // The pattern it runs: an arp, or pattern Off to strike its tones.
         virtual ArpSettings arp (int key, int slot) const noexcept = 0;
+
+        // A melody note's pitch now (Melody.h): scale index `index` from the tonic in key `key`'s
+        // octave, moved to a chord tone if `strong`. -1 for none.
+        virtual int melodyTone (int key, int slot, int index, bool strong) const noexcept { return -1; }
     };
 
     class ChordPerformer
@@ -167,9 +175,18 @@ namespace chordism
                 Perf& p = perfs[(size_t) k];
                 if (! p.alive)
                     continue;
+                const MelodySettings oldMelody = p.arp.melody;
                 p.arp = arpOf (k, p.slot);
-                restart[(size_t) k] = restartAll || p.arpMode != (p.arp.pattern != ArpPattern::Off);
+                restart[(size_t) k] = restartAll || p.arpMode != (p.arp.pattern != ArpPattern::Off)
+                                   || oldMelody.on != p.arp.melody.on;
                 anyRestart |= restart[(size_t) k];
+
+                // Other melody settings: the next note is the new melody's next one.
+                if (! restart[(size_t) k] && p.arpMode && p.arp.melody.on && oldMelody != p.arp.melody)
+                {
+                    drop (k, ArpStep);
+                    pushAt (nextMelodyNote (p.arp.melody, ppqAt (sample), false), ArpStep, startOrder, k, p.gen, 0);
+                }
             }
             if (anyRestart)
             {
@@ -226,7 +243,9 @@ namespace chordism
                 const Perf& p = perfs[(size_t) k];
                 if (! p.alive)
                     continue;
-                if (p.arpMode)
+                if (p.arpMode && p.arp.melody.on)
+                    pushAt (nextMelodyNote (p.arp.melody, from, true), ArpStep, startOrder, k, p.gen, 0);
+                else if (p.arpMode)
                     pushAt (grid::atOrAfter (from, patternRatePpq (p.arp.rate)), ArpStep, startOrder, k, p.gen, 0);
                 else if (hasRhythm())
                     pushAt (nextStrikeFrom (now, from), NextStrike, startOrder, k, p.gen, 0);
@@ -424,7 +443,7 @@ namespace chordism
         {
             if (voicing != nullptr)
                 return voicing->arp (key, slot);
-            return { fx.arp, fx.arpRate, fx.arpRange, fx.arpGate };
+            return { fx.arp, fx.arpRate, fx.arpRange, fx.arpGate, {} };
         }
 
         template <class Pred>
@@ -669,6 +688,11 @@ namespace chordism
         {
             Perf& p = perfs[(size_t) key];
             closeArpNote (key, sample);
+            if (p.arp.melody.on)
+            {
+                melodyStep (key, sample, T, press);
+                return;
+            }
 
             const double step = patternRatePpq (p.arp.rate);
             const double next = press ? grid::afterPress (T, step) : grid::after (T, step);
@@ -684,26 +708,98 @@ namespace chordism
             const VoicedNotes tones = arpTones (p.notes, p.arp.range);
             const int i = arpIndex (p.arp.pattern, tones.size, p.arpStepIndex++);
             if (sound && i >= 0 && endPpq > T)
-            {
-                p.src ^= 1;
-                ++p.arpNoteSeq;
-                const int vel = velocityAt (p, sample);
-                voices.start (source (key, p.src), outChannel, tones[i], vel, sample, *out);
-                if (voicing != nullptr)
-                {
-                    // The Smart Scale zone stacks after the pattern: each step with its octaves.
-                    const bool one = fx.stack == StackMode::PlusOne || fx.stack == StackMode::PlusOneAndTwo;
-                    const bool two = fx.stack == StackMode::PlusTwo || fx.stack == StackMode::PlusOneAndTwo;
-                    if (one && tones[i] + 12 < 128)
-                        voices.start (source (key, p.src), outChannel, tones[i] + 12, vel, sample, *out);
-                    if (two && tones[i] + 24 < 128)
-                        voices.start (source (key, p.src), outChannel, tones[i] + 24, vel, sample, *out);
-                }
-                p.arpNoteOpen = true;
-                pushAt (endPpq, ArpNoteEnd, endOrder, key, p.gen, p.arpNoteSeq);
-            }
+                startStepNote (key, sample, tones[i], endPpq);
             pushAt (next, ArpStep, startOrder, key, p.gen, 0);
         }
+
+        // One arp or melody note, until `endPpq`. The Smart Scale zone stacks after the pattern:
+        // each step sounds with its octaves.
+        void startStepNote (int key, int sample, int pitch, double endPpq) noexcept
+        {
+            Perf& p = perfs[(size_t) key];
+            p.src ^= 1;
+            ++p.arpNoteSeq;
+            const int vel = velocityAt (p, sample);
+            voices.start (source (key, p.src), outChannel, pitch, vel, sample, *out);
+            if (voicing != nullptr)
+            {
+                const bool one = fx.stack == StackMode::PlusOne || fx.stack == StackMode::PlusOneAndTwo;
+                const bool two = fx.stack == StackMode::PlusTwo || fx.stack == StackMode::PlusOneAndTwo;
+                if (one && pitch + 12 < 128)
+                    voices.start (source (key, p.src), outChannel, pitch + 12, vel, sample, *out);
+                if (two && pitch + 24 < 128)
+                    voices.start (source (key, p.src), outChannel, pitch + 24, vel, sample, *out);
+            }
+            p.arpNoteOpen = true;
+            pushAt (endPpq, ArpNoteEnd, endOrder, key, p.gen, p.arpNoteSeq);
+        }
+
+        //======================================================================
+        // Melody (Melody.h): the steps are the melody's notes.
+
+        // The melody note at T: on a key press, the one sounding at T (if enough of it is left,
+        // as for the Step Sequencer); otherwise the one starting at T. Then the next note.
+        void melodyStep (int key, int sample, double T, bool press) noexcept
+        {
+            Perf& p = perfs[(size_t) key];
+            const MelodySettings& m = p.arp.melody;
+            const double L = clock.barLength();
+            const double B = clock.barStart (press ? T : T + melodyEpsilon);   // a note on the bar line is the new bar's
+            const MelodyBar bar = melody::generate (m, melody::barNumber (B, L), melody::slotsIn (L));
+
+            int playing = -1;
+            for (int i = 0; i < bar.count; ++i)
+            {
+                const double start = melody::noteStart (m, bar, B, L, i);
+                if (press)
+                {
+                    if (start <= T + melodyEpsilon && T < melody::noteEnd (m, bar, B, L, i) - grid::minFirstStep * seqSlotPpq)
+                        playing = i;
+                }
+                else if (std::abs (start - T) <= melodyEpsilon)
+                {
+                    playing = i;
+                }
+            }
+
+            if (playing >= 0 && voicing != nullptr)
+            {
+                double endPpq = melody::noteEnd (m, bar, B, L, playing);
+                bool sound = true;
+                if (fx.seq.on)
+                {
+                    const SeqWindow w = stepGrid().windowAt (T);
+                    sound = w.valid;
+                    endPpq = w.valid && w.end < endPpq ? w.end : endPpq;
+                }
+                const auto& note = bar.notes[(size_t) playing];
+                const int pitch = voicing->melodyTone (key, p.slot, note.index, note.strong);
+                if (sound && pitch >= 0 && pitch < 128 && endPpq > T)
+                    startStepNote (key, sample, pitch, endPpq);
+            }
+            pushAt (nextMelodyNote (m, T, false), ArpStep, startOrder, key, p.gen, 0);
+        }
+
+        // The start of the first melody note after T (at or after it, if `inclusive`), looking
+        // up to two bars on; else the bar line after next, to look again from there.
+        double nextMelodyNote (const MelodySettings& m, double T, bool inclusive) const noexcept
+        {
+            const double L = clock.barLength();
+            double B = clock.barStart (T);
+            for (int b = 0; b < 3; ++b, B += L)
+            {
+                const MelodyBar bar = melody::generate (m, melody::barNumber (B, L), melody::slotsIn (L));
+                for (int i = 0; i < bar.count; ++i)
+                {
+                    const double start = melody::noteStart (m, bar, B, L, i);
+                    if (inclusive ? start >= T - melodyEpsilon : start > T + melodyEpsilon)
+                        return start;
+                }
+            }
+            return B;
+        }
+
+        static constexpr double melodyEpsilon = 1.0e-6;
 
         void closeArpNote (int key, int sample) noexcept
         {

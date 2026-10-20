@@ -156,8 +156,17 @@ namespace chordism::ui
                           || m.settings.shifters != model.settings.shifters;
         model = m;
         active = now;
-        if (changed)
+        if (flashCount > 0 && juce::Time::getMillisecondCounterHiRes() - flashStart > flashStepMs * (flashCount - 1) + flashOnMs)
+            flashCount = 0;
+        if (changed || flashCount > 0)
             repaint();
+    }
+
+    void ChordKeyboard::flash (int count)
+    {
+        flashCount = juce::jlimit (0, numChordSlots, count);
+        flashStart = juce::Time::getMillisecondCounterHiRes();
+        repaint();
     }
 
     void ChordKeyboard::paint (juce::Graphics& g)
@@ -186,6 +195,15 @@ namespace chordism::ui
             {
                 g.setColour (colours::chord);
                 g.fillRoundedRectangle (r.reduced (5.0f, 0.0f).removeFromBottom (5.0f).translated (0.0f, -4.0f), 2.0f);
+            }
+            if (slot < flashCount)
+            {
+                const double t = juce::Time::getMillisecondCounterHiRes() - flashStart - flashStepMs * slot;
+                if (t >= 0.0 && t < flashOnMs)
+                {
+                    g.setColour (colours::chord.withAlpha ((float) (0.6 * (1.0 - t / flashOnMs))));
+                    g.fillRoundedRectangle (r.reduced (1.0f), 3.0f);
+                }
             }
         }
         for (int pc = 0; pc < 12; ++pc)
@@ -409,7 +427,8 @@ namespace chordism::ui
             auto tr = r.reduced (1.0f, 4.0f);
             g.drawText (juce::String (slot + 1), tr.removeFromBottom (14.0f), juce::Justification::centred);
             g.setFont (font (8.5f));
-            g.drawFittedText (shortArpName ((int) ss.patterns[(size_t) slot].pattern), tr.removeFromBottom (12.0f).toNearestInt(),
+            g.drawFittedText (ss.patterns[(size_t) slot].melody ? juce::String ("Mel") : shortArpName ((int) ss.patterns[(size_t) slot].pattern),
+                              tr.removeFromBottom (12.0f).toNearestInt(),
                               juce::Justification::centred, 1, 0.5f);
         }
     }
@@ -449,7 +468,9 @@ namespace chordism::ui
         const auto& p = model.settings.smart.patterns[(size_t) slot];
         juce::PopupMenu arps, rates, chords;
         for (int a = 1; a < numArpPatterns; ++a)
-            addTicked (arps, 100 + a, arpPatternName ((ArpPattern) a), p.pattern == (ArpPattern) a);
+            addTicked (arps, 100 + a, arpPatternName ((ArpPattern) a), ! p.melody && p.pattern == (ArpPattern) a);
+        arps.addSeparator();
+        addTicked (arps, 100 + numArpPatterns, "Melody", p.melody);   // the parameter's last choice
         for (int r = 0; r < numPatternRates; ++r)
             addTicked (rates, 200 + r, patternRateName (r), p.rate == r);
         for (int c = 0; c < numArpChords; ++c)
@@ -458,7 +479,7 @@ namespace chordism::ui
         juce::PopupMenu m;
         m.addSectionHeader ("Pattern " + juce::String (slot + 1));
         m.addItem (1, "Edit this pattern", true, model.settings.smart.patternSlot == slot);
-        m.addSubMenu ("Arp", arps);
+        m.addSubMenu ("Pattern", arps);
         m.addSubMenu ("Rate", rates);
         m.addSubMenu ("Arp chord", chords);
 

@@ -38,6 +38,9 @@ namespace chordism
         void setOctave (ChordGroup group, Scale scale, int degree, int step, int octave, bool on);
         void resetDegree (int degree);
 
+        // MIDI import: these degrees' steps (the edited ones), on `group`; the others reset.
+        void setImported (ChordGroup group, const std::array<DegreeEdit, numChordSlots>& degrees);
+
         // The Active Chord menu: rewrites `degree`'s steps to chord type `type` (ChordTypes.h).
         void setChordType (ChordGroup group, Scale scale, int degree, int type);
         void resetAll (ChordGroup group);

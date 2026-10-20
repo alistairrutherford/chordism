@@ -88,6 +88,16 @@ namespace chordism::params
     juce::String patternRange (int slot) { return numbered ("pattern", slot, "Range"); }
     juce::String patternChord (int slot) { return numbered ("pattern", slot, "Chord"); }
     juce::String patternGate (int slot)  { return numbered ("pattern", slot, "Gate"); }
+    juce::String patternNotes (int slot) { return numbered ("pattern", slot, "Notes"); }
+    juce::String patternRhythm (int slot) { return numbered ("pattern", slot, "Rhythm"); }
+
+    bool isPresetParameter (const juce::String& paramId)
+    {
+        for (const char* excluded : { enable, testPattern, testShifter, testSmart, port, portCompensate, portTrimMs })
+            if (paramId == excluded)
+                return false;
+        return true;
+    }
 
     juce::String stepsText (int mask)
     {
@@ -240,14 +250,16 @@ namespace chordism::params
         for (int p = 0; p < numSeqPatterns; ++p)
             layout.add (stepsParam (smartSeqSteps (p), "SS seq " + String (p + 1) + " steps", ss.seq.patterns[(size_t) p]));
 
-        // The five pattern slots. The arp list has no Off: a pattern key always plays.
+        // The five pattern slots. The arp list has no Off: a pattern key always plays. Its last
+        // choice (Phase 6, appended) is Melody.
         for (int n = 0; n < numPatternSlots; ++n)
         {
             const auto& slot = ss.patterns[(size_t) n];
             const String name = "Pattern " + String (n + 1);
-            layout.add (std::make_unique<AudioParameterChoice> (id (patternArp (n)), name + " arp",
-                                                                names (numArpPatterns - 1, [] (int i) { return arpPatternName ((ArpPattern) (i + 1)); }),
-                                                                (int) slot.pattern - 1));
+            auto arps = names (numArpPatterns - 1, [] (int i) { return arpPatternName ((ArpPattern) (i + 1)); });
+            arps.add ("Melody");
+            layout.add (std::make_unique<AudioParameterChoice> (id (patternArp (n)), name + " arp", arps,
+                                                                slot.melody ? numArpPatterns - 1 : (int) slot.pattern - 1));
             layout.add (std::make_unique<AudioParameterChoice> (id (patternRate (n)), name + " rate", names (numPatternRates, patternRateName), slot.rate));
             layout.add (std::make_unique<AudioParameterInt> (id (patternRange (n)), name + " range", minArpRange, maxArpRange, slot.range));
             layout.add (std::make_unique<AudioParameterChoice> (id (patternChord (n)), name + " chord",
@@ -259,6 +271,19 @@ namespace chordism::params
         // Test smart: the test pattern also plays the Smart Scale zone (TestPattern.h).
         layout.add (std::make_unique<AudioParameterChoice> (id (testSmart), "Test smart",
                                                             StringArray { "Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5" }, 0));
+
+        // Phase 6: Melody mode (Source/core/engine/Melody.h). Appended, never reordered.
+        for (int n = 0; n < numPatternSlots; ++n)
+        {
+            const auto& slot = ss.patterns[(size_t) n];
+            const String name = "Pattern " + String (n + 1);
+            layout.add (std::make_unique<AudioParameterInt> (id (patternNotes (n)), name + " notes", minMelodyNotes, maxMelodyNotes, slot.notes));
+            layout.add (std::make_unique<AudioParameterChoice> (id (patternRhythm (n)), name + " rhythm",
+                                                                names (numMelodyRhythms, [] (int i) { return melodyRhythmName ((MelodyRhythm) i); }),
+                                                                (int) slot.rhythm));
+        }
+        layout.add (percent (melodySwing, "Melody swing", (float) (ss.melodySwing * 100.0)));
+        layout.add (std::make_unique<AudioParameterInt> (id (melodySeed), "Melody seed", minMelodySeed, maxMelodySeed, (int) ss.melodySeed));
         return layout;
     }
 
@@ -313,7 +338,9 @@ namespace chordism::params
           ssVelocityPeak (state.getRawParameterValue (params::smartVelocityPeak)),
           ssVelocityRange (state.getRawParameterValue (params::smartVelocityRange)),
           ssHold (state.getRawParameterValue (params::smartHold)),
-          ssTest (state.getRawParameterValue (params::testSmart))
+          ssTest (state.getRawParameterValue (params::testSmart)),
+          ssMelodySwing (state.getRawParameterValue (params::melodySwing)),
+          ssMelodySeed (state.getRawParameterValue (params::melodySeed))
     {
         jassert (enable && key && scale && group && split && chordOctave && muteChords && muteScale
                  && testPattern && port && portCompensate && portTrimMs && progression && shifterMode && testShifter);
@@ -352,7 +379,11 @@ namespace chordism::params
             patChord[(size_t) n] = state.getRawParameterValue (params::patternChord (n));
             patGate[(size_t) n] = state.getRawParameterValue (params::patternGate (n));
             jassert (patArp[(size_t) n] && patRate[(size_t) n] && patRange[(size_t) n] && patChord[(size_t) n] && patGate[(size_t) n]);
+            patNotes[(size_t) n] = state.getRawParameterValue (params::patternNotes (n));
+            patRhythm[(size_t) n] = state.getRawParameterValue (params::patternRhythm (n));
+            jassert (patNotes[(size_t) n] && patRhythm[(size_t) n]);
         }
+        jassert (ssMelodySwing && ssMelodySeed);
     }
 
     ChordFxSettings Snapshot::chordFx() const noexcept
@@ -406,12 +437,18 @@ namespace chordism::params
         for (int n = 0; n < numPatternSlots; ++n)
         {
             auto& slot = s.patterns[(size_t) n];
-            slot.pattern = (ArpPattern) (choice (patArp[(size_t) n], numArpPatterns - 1) + 1);
+            const int arp = choice (patArp[(size_t) n], numArpPatterns);   // the last choice is Melody
+            slot.melody = arp == numArpPatterns - 1;
+            slot.pattern = slot.melody ? ArpPattern::LinearUp : (ArpPattern) (arp + 1);
             slot.rate = choice (patRate[(size_t) n], numPatternRates);
             slot.range = juce::jlimit (minArpRange, maxArpRange, whole (patRange[(size_t) n]));
             slot.chord = (ArpChord) choice (patChord[(size_t) n], numArpChords);
             slot.gate = fraction (patGate[(size_t) n]);
+            slot.notes = juce::jlimit (minMelodyNotes, maxMelodyNotes, whole (patNotes[(size_t) n]));
+            slot.rhythm = (MelodyRhythm) choice (patRhythm[(size_t) n], numMelodyRhythms);
         }
+        s.melodySwing = fraction (ssMelodySwing);
+        s.melodySeed = (uint32_t) juce::jlimit (minMelodySeed, maxMelodySeed, whole (ssMelodySeed));
         return s;
     }
 

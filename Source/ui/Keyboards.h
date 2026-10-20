@@ -5,11 +5,12 @@
 //                   chord name, with a stripe on the last one played; the black keys show their
 //                   shifter's target and light up while active. Right-click a white key for its
 //                   degree (Custom progression), chord type (the Chord Editor) or a reset; a
-//                   black key for its shifter's target.
+//                   black key for its shifter's target. After a MIDI import the imported
+//                   chords' keys light up in turn.
 //   SmartKeyboard   the Smart Scale zone, two octaves from the split's C: each white key shows
 //                   the tone it plays now, chord tones with a coloured edge; the black keys show
 //                   their pattern slot. Right-click a white key for Note Repeat, a black key to
-//                   select its pattern slot or change its arp.
+//                   select its pattern slot or change its pattern (an arp, or Melody).
 //   OutputKeyboard  88 keys: the notes Chordism sends (red) and the keys held (outlined), with
 //                   the split marked. Hideable.
 #pragma once
@@ -60,6 +61,10 @@ namespace chordism::ui
         ChordKeyboard (ChordismProcessor&, Bindings&);
         void refresh (const UiModel&);
 
+        // Lights the first `count` white keys one after another (a MIDI import, PLAN.md §4.6).
+        void flash (int count);
+        bool isFlashing() const noexcept { return flashCount > 0; }
+
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
@@ -75,6 +80,9 @@ namespace chordism::ui
         UiModel model;
         PianoLayout layout;
         std::array<bool, 12> active {};
+        int flashCount = 0;
+        double flashStart = 0.0;
+        static constexpr double flashStepMs = 160.0, flashOnMs = 300.0;
     };
 
     class SmartKeyboard : public juce::Component,
