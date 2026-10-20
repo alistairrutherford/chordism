@@ -1,16 +1,17 @@
 // The editor's panels (PLAN.md §6):
 //
 //   TopBar         logo (opens Setup) · Enable · Preset browser · Key · Scale · Progression ·
-//                  Chord Group · Mapping · Shifter mode · Export handle · keyboard show/hide
-//   ChordFxPanel   the chord zone's effects: Stack, Octave, Hold, Mute; Strum; Arp; Repeat;
-//                  Velocity; Step Sequencer and its steps
+//                  Chord Group · Mapping · Shifter mode · Sync group · Export handle · keyboard
+//                  show/hide
+//   ChordFxPanel   the chord zone's effects: Stack, Octave, Hold, Mute; Strum; Arp; Repeat,
+//                  Voice leading; Velocity; Step Sequencer and its steps
 //   SmartPanel     the selected pattern slot (1-5) and its settings: an arp's, or in Melody mode
 //                  the melody's (Notes, Rhythm; Swing and Seed for all slots beside the slot
 //                  buttons); the Smart Scale's effects: Stack, Hold, Velocity, Step Sequencer
 //                  and its steps
 //   SetupPanel     everything else, as an overlay: Split, the custom progression, the five
 //                  shifters' targets, the test pattern (LiveBridge), and the preferences (the
-//                  QWERTY layout)
+//                  QWERTY layout, the look-ahead window)
 #pragma once
 
 #include "Keyboards.h"
@@ -58,7 +59,7 @@ namespace chordism::ui
     private:
         juce::TextButton logo { "Chordism" };
         juce::TextButton keyboardButton { "Keys" };
-        ParamControl enable, key, scale, progression, group, mapping, shifterMode;
+        ParamControl enable, key, scale, progression, group, mapping, shifterMode, sync;
     };
 
     class ChordFxPanel : public juce::Component
@@ -108,6 +109,7 @@ namespace chordism::ui
         juce::TextButton closeButton { "Done" };
         juce::Label heading, prefsCaption, qwertyCaption;
         juce::ComboBox qwerty;            // the QWERTY layout preference (ChordismEditor)
+        ParamControl lookAhead;
         ParamGrid left, shifters, right;
     };
 }

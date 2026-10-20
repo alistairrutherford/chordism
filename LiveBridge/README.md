@@ -150,7 +150,7 @@ index or a name. Names match exactly (ignoring case) first, then by a unique sub
 | `set_tempo` | `bpm` | `{tempo}` |
 | `start_transport` | `from_beat?`, `resume=false` | `{is_playing, current_song_time}` |
 | `stop_transport` | | same |
-| `set_song_properties` | any of `current_song_time, loop, metronome, arrangement_overdub, record_mode, session_record, signature_numerator, signature_denominator, back_to_arranger, midi_recording_quantization` (`"none"` or a `RecordingQuantization` name) | the new values |
+| `set_song_properties` | any of `current_song_time, loop, loop_start, loop_length, metronome, arrangement_overdub, record_mode, session_record, signature_numerator, signature_denominator, back_to_arranger, midi_recording_quantization` (`"none"` or a `RecordingQuantization` name) | the new values |
 | `create_midi_track` | `index=-1`, `name?` | the track |
 | `delete_track` | `track` | `{deleted, track_count}` |
 | `get_track` | `track` | the track |
@@ -169,6 +169,7 @@ index or a name. Names match exactly (ignoring case) first, then by a unique sub
 | `start_recording` | `mode="arrangement"`, `from_beat?`; or `mode="session"` with `track?`, `scene?`, `length_beats?` | the record state |
 | `stop_recording` | `mode`, `stop_transport=true` | the record and transport state |
 | `clear_arrangement_clips` | `track` | `{deleted}` |
+| `clear_session_clips` | `track` | `{deleted}` (Phase 7) |
 | `get_clip_notes` | `track`, `source="auto"` (`arrangement`/`session`), `clip_index?`, `scene?` | clip info (start_time, markers, loop, length) and `notes[]` (pitch, start_time, duration, velocity, mute, probability, and `song_time` for arrangement clips) |
 | `get_meters` | `tracks?` (default all) | `[{track, name, left, right, level}]`, master last |
 | `get_presets` | `track`, `device` | `{device, presets[], selected}`: Live's preset list for a plug-in (for a JUCE VST3, only "Default") |

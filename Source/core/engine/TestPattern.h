@@ -12,6 +12,10 @@
 //              D, G, C…, in the first octave at or above the split), released with the chord key
 //   Pattern n  holds pattern key n (the first at or above the split) for as long as the test
 //              runs, so the pattern follows every chord change
+//   Tones early (Phase 7) as Tones, but each beat's Smart Scale key goes down a 1/64 note (1/16
+//              of a beat) before the beat, ahead of its chord: on a loop, look-ahead
+//              (ChordTimeline.h) gives it the upcoming chord. Before a loop wrap it anticipates
+//              the beat at the loop start, and stays down through the wrap.
 //
 // Plain C++. Stateless apart from duplicate suppression at block edges and the held keys.
 #pragma once
@@ -32,9 +36,13 @@ namespace chordism
 
         static int slotForBeat (int64_t beat) noexcept { return (int) (((beat % 7) + 7) % 7); }
 
-        // Test smart: 0 = Off, 1 = Tones, 2 + n = Pattern n (the parameter's choices).
-        static constexpr int smartOff = 0, smartTones = 1, smartPattern = 2;
-        static constexpr int numSmartTests = smartPattern + 5;
+        // Test smart: 0 = Off, 1 = Tones, 2 + n = Pattern n, then Tones early (Phase 7, appended):
+        // the parameter's choices.
+        static constexpr int smartOff = 0, smartTones = 1, smartPattern = 2, smartTonesEarly = smartPattern + 5;
+        static constexpr int numSmartTests = smartTonesEarly + 1;
+
+        // Tones early: how far before its beat the Smart Scale key goes down (quarter notes).
+        static constexpr double earlyPpq = 1.0 / 16.0;
 
         // The Smart Scale white key letter (C = 0) Tones presses on beat `beat`.
         static int letterForBeat (int64_t beat) noexcept { return (int) (((3 * beat) % 7 + 7) % 7); }
@@ -61,16 +69,26 @@ namespace chordism
                        int offset = 0, int smart = smartOff) noexcept
         {
             const double spb = t.samplesPerBeat();
-            const double endPpq = t.ppq + numSamples / spb;
+            // A segment that ends at a loop wrap stops short of the loop end in musical time (a
+            // key there belongs after the wrap, Clock.h), and a segment starting just after the
+            // wrap (by part of a sample) still has the key on the loop start.
+            double endPpq = t.ppq + numSamples / spb;
+            if (t.looping && t.loopEnd > t.loopStart && t.ppq < t.loopEnd && endPpq > t.loopEnd)
+                endPpq = t.loopEnd;
+            const double fromPpq = t.ppq - 1.0 / spb;
             const bool jumpedBack = t.ppq < lastEndPpq - 1.0e-6;
+            // A loop wrap (rather than a locate): Tones early keeps its key down through it.
+            const bool wrapped = jumpedBack && t.looping && std::abs (t.ppq - t.loopStart) < 1.0e-3
+                              && std::abs (lastEndPpq - t.loopEnd) < 1.0e-3;
             const int shifterKey = on ? router.shifterKeyForSlot (shifter) : -1;
-            const bool tones = on && smart == smartTones;
-            const int patternKey = on && smart >= smartPattern && smart < numSmartTests
+            const bool early = on && smart == smartTonesEarly;
+            const bool tones = on && (smart == smartTones || early);
+            const int patternKey = on && smart >= smartPattern && smart < smartPattern + 5
                                  ? router.patternKeyForSlot (smart - smartPattern) : -1;
 
             if (heldKey >= 0 && (! on || ! t.playing || jumpedBack))
                 releaseHeld (offset, out);
-            if (heldScaleKey >= 0 && (! tones || ! t.playing || jumpedBack))
+            if (heldScaleKey >= 0 && (! tones || ! t.playing || (jumpedBack && ! (early && wrapped))))
                 releaseScale (offset, out);
             if (heldShifter >= 0 && (! on || ! t.playing || jumpedBack || heldShifter != shifterKey))
                 releaseShifter (offset, out);
@@ -79,30 +97,51 @@ namespace chordism
 
             if (! on || ! t.playing)
             {
-                lastHalfBeat = std::numeric_limits<int64_t>::min();
+                lastTick = std::numeric_limits<int64_t>::min();
                 lastEndPpq = t.ppq;
                 return;
             }
 
             if (jumpedBack)
-                lastHalfBeat = std::numeric_limits<int64_t>::min();
+                lastTick = std::numeric_limits<int64_t>::min();
 
-            // Half-beat grid: even = key down on the beat, odd = key up an eighth later.
-            for (auto h = (int64_t) std::ceil (t.ppq * 2.0 - 1.0e-7); (double) h < endPpq * 2.0 - 1.0e-7; ++h)
+            // A grid of 1/16 beats: tick 8h is half beat h (even = key down on the beat, odd = key
+            // up an eighth later); with Tones early, tick 16b - 1 presses beat b's Smart key.
+            for (auto k = (int64_t) std::ceil (fromPpq * ticksPerBeat - 8.0e-7); (double) k < endPpq * ticksPerBeat - 8.0e-7; ++k)
             {
-                if (h <= lastHalfBeat)
+                if (k <= lastTick)
                     continue;
-                lastHalfBeat = h;
+                lastTick = k;
+                const bool halfBeat = k % 8 == 0;
+                const bool earlyPress = early && ((k % 16) + 16) % 16 == 15;
+                if (! halfBeat && ! earlyPress)
+                    continue;
 
-                int sample = (int) std::llround (((double) h * 0.5 - t.ppq) * spb);
+                int sample = (int) std::llround (((double) k / ticksPerBeat - t.ppq) * spb);
                 sample = offset + (sample < 0 ? 0 : (sample >= numSamples ? numSamples - 1 : sample));
 
+                if (earlyPress)
+                {
+                    // The beat it's for: across a loop wrap, the beat at the loop start.
+                    double beat = (double) (k + 1) / ticksPerBeat;
+                    if (t.looping && t.loopEnd > t.loopStart && beat >= t.loopEnd - 1.0e-9)
+                        beat = t.loopStart + (beat - t.loopEnd);
+                    if (heldScaleKey >= 0)
+                        releaseScale (sample, out);
+                    const int key = router.scaleKeyForLetter (letterForBeat ((int64_t) std::floor (beat + 1.0e-9)));
+                    if (key >= 0 && out.push (MidiEvent::noteOn (0, key, velocity, sample)))
+                        heldScaleKey = key;
+                    continue;
+                }
+
+                const int64_t h = k / 8;
+                const bool down = (h & 1) == 0;
                 if (heldKey >= 0)
                     releaseHeld (sample, out);
-                if (heldScaleKey >= 0)
+                if (heldScaleKey >= 0 && (! early || ! down))
                     releaseScale (sample, out);
 
-                if ((h & 1) == 0)
+                if (down)
                 {
                     if (shifterKey >= 0)
                     {
@@ -117,11 +156,11 @@ namespace chordism
                     if (key >= 0 && out.push (MidiEvent::noteOn (0, key, velocity, sample)))
                         heldKey = key;
 
-                    if (tones)
+                    if (tones && ! early)
                     {
-                        const int k = router.scaleKeyForLetter (letterForBeat (h / 2));
-                        if (k >= 0 && out.push (MidiEvent::noteOn (0, k, velocity, sample)))
-                            heldScaleKey = k;
+                        const int k2 = router.scaleKeyForLetter (letterForBeat (h / 2));
+                        if (k2 >= 0 && out.push (MidiEvent::noteOn (0, k2, velocity, sample)))
+                            heldScaleKey = k2;
                     }
                     if (patternKey >= 0 && heldPattern < 0 && out.push (MidiEvent::noteOn (0, patternKey, velocity, sample)))
                         heldPattern = patternKey;
@@ -165,7 +204,7 @@ namespace chordism
             heldShifter = -1;
             heldScaleKey = -1;
             heldPattern = -1;
-            lastHalfBeat = std::numeric_limits<int64_t>::min();
+            lastTick = std::numeric_limits<int64_t>::min();
             lastEndPpq = 0.0;
         }
 
@@ -179,7 +218,8 @@ namespace chordism
         int heldShifter = -1;
         int heldScaleKey = -1;
         int heldPattern = -1;
-        int64_t lastHalfBeat = std::numeric_limits<int64_t>::min();
+        static constexpr double ticksPerBeat = 16.0;
+        int64_t lastTick = std::numeric_limits<int64_t>::min();
         double lastEndPpq = 0.0;
     };
 }

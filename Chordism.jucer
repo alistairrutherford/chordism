@@ -20,6 +20,7 @@
         <FILE id="csF021" name="ChordNamer.h" compile="0" resource="0" file="Source/core/theory/ChordNamer.h"/>
         <FILE id="csF022" name="RomanNumeral.h" compile="0" resource="0" file="Source/core/theory/RomanNumeral.h"/>
         <FILE id="csF040" name="ChordTypes.h" compile="0" resource="0" file="Source/core/theory/ChordTypes.h"/>
+        <FILE id="csF062" name="VoiceLeading.h" compile="0" resource="0" file="Source/core/theory/VoiceLeading.h"/>
       </GROUP>
       <GROUP id="csGrp1" name="core/engine">
         <FILE id="csF004" name="MidiEvents.h" compile="0" resource="0" file="Source/core/engine/MidiEvents.h"/>
@@ -44,6 +45,8 @@
         <FILE id="csF038" name="ScaleMapper.h" compile="0" resource="0" file="Source/core/engine/ScaleMapper.h"/>
         <FILE id="csF039" name="PatternEngine.h" compile="0" resource="0" file="Source/core/engine/PatternEngine.h"/>
         <FILE id="csF051" name="Melody.h" compile="0" resource="0" file="Source/core/engine/Melody.h"/>
+        <FILE id="csF063" name="SharedSession.h" compile="0" resource="0" file="Source/core/engine/SharedSession.h"/>
+        <FILE id="csF064" name="ChordTimeline.h" compile="0" resource="0" file="Source/core/engine/ChordTimeline.h"/>
       </GROUP>
       <GROUP id="csF0Grp4" name="core/midiio">
         <FILE id="csF052" name="MidiFile.h" compile="0" resource="0" file="Source/core/midiio/MidiFile.h"/>

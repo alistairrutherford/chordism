@@ -21,21 +21,38 @@
 //
 // A block is processed in the Clock's segments (split at loop wraps). Within a segment, input
 // and queued events (of both zones) run in sample order; at one sample, queued note-offs come
-// first, then input, then queued note-ons; between the zones, the chord zone's first.
+// first, then chords from synced instances, then input, then queued note-ons; between the
+// zones, the chord zone's first.
+//
+// Phase 7:
+//   Instance Sync (SharedSession.h)  in a sync group, every change of the current chord this
+//       instance makes by playing (a chord key, or a held chord retuned) is published with its
+//       PPQ time; chords the others publish become the current chord at their stamped sample
+//       (or at the block start, if they arrive late). The current chord is whichever came last,
+//       ours or theirs. A muted chord zone plays nothing and publishes nothing.
+//   Look-ahead (ChordTimeline.h)  while the transport loops, the current chord's changes are
+//       learned; a Smart Scale key pressed within the window before a learned change plays the
+//       upcoming chord's tone.
+//   Voice leading (VoiceLeading.h, in ChordFx.h).
 #pragma once
 
 #include "../theory/ChordEditor.h"
 #include "ChordFx.h"
+#include "ChordTimeline.h"
 #include "Clock.h"
 #include "InputRouter.h"
 #include "MidiEvents.h"
 #include "PatternEngine.h"
+#include "SharedSession.h"
 #include "Shifters.h"
 #include "TestPattern.h"
 #include "Transport.h"
 #include "VoiceTracker.h"
 #include <array>
 #include <atomic>
+#include <climits>
+#include <cmath>
+#include <limits>
 
 namespace chordism
 {
@@ -58,7 +75,9 @@ namespace chordism
         int outputChannel = 0;            // 0..15
         ChordFxSettings fx;               // Phase 3: the chord-zone effects
         SmartSettings smart;              // Phase 4: the Smart Scale zone
-        int testSmart = 0;                // TestPattern::smartOff, smartTones, smartPattern + n
+        int testSmart = 0;                // TestPattern::smartOff, smartTones, smartPattern + n, smartTonesEarly
+        int syncGroup = 0;                // Phase 7: 0 = Off, 1-4 = A-D (SharedSession.h)
+        int lookAhead = defaultLookAhead; // Phase 7: the window's index (lookAheadPpq); 0 = Off
     };
 
     class ChordismEngine
@@ -70,6 +89,15 @@ namespace chordism
             performer.setSibling (&smart);
             refreshChords (0, nullptr);
         }
+
+        // The session Instance Sync goes through (SharedSession::process() in the plug-in), or
+        // nullptr. Call before processing, not while a block runs.
+        void setSession (SharedSession* s) noexcept
+        {
+            session = s;
+            memberId = s != nullptr ? s->join() : 0;
+        }
+        uint32_t getMemberId() const noexcept { return memberId; }
 
         // Processes one block. `in` must be sorted by sample. Appends to `out` in sample order.
         // `edits` is the Chord Editor's current snapshot (see adoptEdits for when it applies).
@@ -86,7 +114,8 @@ namespace chordism
 
             if (wasPlaying && ! t.playing)
                 releaseAll (0, out);   // transport stop: all notes off (PLAN.md §5)
-            if (! wasPlaying && t.playing)
+            const bool started = ! wasPlaying && t.playing;
+            if (started)
             {
                 performer.transportStarted();
                 smart.transportStarted();
@@ -99,19 +128,34 @@ namespace chordism
                 smart.transportJump (clock.jumpDelta(), 0, out);
             }
 
+            segment = 0;
             applySettings (s, edits, out);
 
-            int i = 0;
+            // Look-ahead: the loop the timeline maps, and where this block starts in it.
+            timeline.setLoop (t.playing, t.looping, t.loopStart, t.loopEnd, lookAheadPpq (s.lookAhead),
+                              numSamples / clock.samplesPerQuarter());
+            if (t.playing && (started || clock.jumpedAtStart()))
+            {
+                if (! started && hostWrapped (t))
+                    timeline.wrap();
+                else
+                    timeline.locate (clock.segment (0).ppq);
+            }
+            gatherSync (s.syncGroup, t, numSamples, out);
+
+            int i = 0, si = 0;
             for (int seg = 0; seg < clock.numSegments(); ++seg)
             {
                 const ClockSegment g = clock.segment (seg);
                 const bool last = seg == clock.numSegments() - 1;
+                segment = seg;
                 performer.setSegment (seg);
                 smart.setSegment (seg);
                 if (seg > 0)
                 {
                     performer.transportJump (clock.wrapDelta (seg), g.start, out);   // a loop wrap inside the block
                     smart.transportJump (clock.wrapDelta (seg), g.start, out);
+                    timeline.wrap();
                 }
 
                 Transport segmentTransport = t;
@@ -128,25 +172,39 @@ namespace chordism
                     const bool haveInjected = j < injected.size();
                     const bool fromInput = haveIn && (! haveInjected || clampSample (in[i].sample, numSamples) <= injected[j].sample);
                     const MidiEvent* next = fromInput ? &in[i] : (haveInjected ? &injected[j] : nullptr);
-                    const int nextSample = next != nullptr ? clampSample (next->sample, numSamples) : g.end;
+                    const int keySample = next != nullptr ? clampSample (next->sample, numSamples) : g.end;
+
+                    // A synced chord at the same sample comes before the keys.
+                    const bool haveSync = si < numSync && syncEvents[(size_t) si].seg == seg;
+                    const bool takeSync = haveSync && (next == nullptr || syncEvents[(size_t) si].sample <= keySample);
+                    const bool any = next != nullptr || takeSync;
+                    const int nextSample = takeSync ? syncEvents[(size_t) si].sample : keySample;
 
                     int at = 0;
                     uint8_t order = 0;
                     ChordPerformer* due = runs < maxQueueRunsPerSegment
-                                        ? peekNext (cursor, next != nullptr ? nextSample + 1 : g.end, at, order) : nullptr;
-                    if (due != nullptr && (next == nullptr || at < nextSample || order < ChordPerformer::inputOrder))
+                                        ? peekNext (cursor, any ? nextSample + 1 : g.end, at, order) : nullptr;
+                    if (due != nullptr && (! any || at < nextSample || order < ChordPerformer::inputOrder))
                     {
                         ++runs;
                         cursor = at;
                         due->runNext (out);
                         continue;
                     }
-                    if (next == nullptr)
+                    if (! any)
                         break;
-                    (fromInput ? i : j)++;
                     cursor = nextSample > cursor ? nextSample : cursor;
+                    if (takeSync)
+                    {
+                        const SyncEvent& e = syncEvents[(size_t) si++];
+                        applyRemote (e.chord, e.sample, out);
+                        continue;
+                    }
+                    (fromInput ? i : j)++;
                     handle (*next, numSamples, out);
                 }
+                if (t.playing)
+                    timeline.advance (g.ppq, g.ppq + (g.end - g.start) / clock.samplesPerQuarter());
             }
         }
 
@@ -182,6 +240,13 @@ namespace chordism
         const PatternEngine& getPatternEngine() const noexcept { return patterns; }
         const Clock& getClock() const noexcept { return clock; }
         int getActiveShifter() const noexcept { return activeShifter; }
+        const ChordTimeline& getTimeline() const noexcept { return timeline; }
+
+        // The chord the Smart Scale follows (ours or a synced instance's), and whether there is
+        // one yet; whether it came from another instance.
+        const SmartChord& getSmartChord() const noexcept { return patterns.getMapper().getChord(); }
+        bool hasSmartChord() const noexcept { return remoteLatest || lastChordSlot >= 0; }
+        bool isSmartChordRemote() const noexcept { return remoteLatest; }
 
         // For the editor: input key `note` is down; a performance of key `note` (chord, tone or
         // pattern) is playing, held or not.
@@ -266,10 +331,13 @@ namespace chordism
             }
         }
 
-        // The chord the Smart Scale follows: the effective key and scale, and the chord slot
-        // played last (before any: the tonic, with no steps).
+        // The chord the Smart Scale follows: a synced instance's, if it came last; else the
+        // effective key and scale, and the chord slot played last (before any: the tonic, with
+        // no steps).
         SmartChord smartChord() const noexcept
         {
+            if (remoteLatest)
+                return remoteChord;
             SmartChord c;
             c.key = context.key;
             c.scale = context.scale;
@@ -279,13 +347,120 @@ namespace chordism
         }
 
         // The Smart Scale zone follows the current chord: its patterns take it at their next step.
-        void followChord (int sample, BlockEvents& out) noexcept
+        // `local`: the change is ours (else a synced chord, stamped `stamp`).
+        void followChord (int sample, BlockEvents& out, bool local = true, double stamp = 0.0) noexcept
         {
             const SmartChord c = smartChord();
             if (c == patterns.getMapper().getChord())
                 return;
             patterns.setChord (c);
             smart.retuneAll (sample, out);
+            chordChanged (sample, local, stamp);
+        }
+
+        // The current chord changed: the timeline learns it, and a change we made by playing is
+        // published to the sync group.
+        void chordChanged (int sample, bool local, double stamp) noexcept
+        {
+            if (! clock.isPlaying() && ! local)
+                return;
+            const double ppq = local ? clock.ppqAt (segment, sample) : stamp;
+            const SmartChord c = patterns.getMapper().getChord();
+            if (clock.isPlaying())
+                timeline.record (ppq, c, clock.ppqAt (segment, sample));
+            if (local && lastChordSlot >= 0 && ! remoteLatest && session != nullptr && SharedSession::validGroup (current.syncGroup))
+                session->publish (current.syncGroup, { c, ppq, clock.isPlaying(), memberId });
+        }
+
+        // A chord from another member of the sync group, at `sample` of the current segment.
+        void applyRemote (const SmartChord& c, double stamp, int sample, BlockEvents& out) noexcept
+        {
+            remoteChord = c;
+            remoteLatest = true;
+            followChord (sample, out, false, stamp);
+        }
+        void applyRemote (const SyncChord& c, int sample, BlockEvents& out) noexcept { applyRemote (c.chord, c.ppq, sample, out); }
+
+        // A host that splits its blocks at the loop end starts the next one at the loop start.
+        bool hostWrapped (const Transport& t) const noexcept
+        {
+            if (! t.looping || ! clock.jumpedAtStart())
+                return false;
+            const double p0 = clock.segment (0).ppq;
+            const double before = p0 - clock.jumpDelta();
+            const double slack = 0.01;
+            return std::abs (p0 - t.loopStart) < slack && std::abs (before - t.loopEnd) < slack;
+        }
+
+        // Reads the sync group's new chords and places each in this block: at its stamped sample
+        // if it falls in the block, at the start if it's late (or either transport is stopped),
+        // or later if it's a little ahead (kept for the coming blocks).
+        void gatherSync (int group, const Transport& t, int numSamples, BlockEvents& out) noexcept
+        {
+            numSync = 0;
+            if (session == nullptr)
+                return;
+            if (group != syncReader.group())
+            {
+                numAhead = 0;
+                if (remoteLatest)
+                {
+                    remoteLatest = false;          // leaving a group: our own chord again
+                    patterns.setChord (smartChord());
+                    smart.retuneAll (0, out);
+                }
+            }
+
+            const double spq = clock.samplesPerQuarter();
+            const ClockSegment& lastSeg = clock.segment (clock.numSegments() - 1);
+            const double blockEnd = lastSeg.ppq + (numSamples - lastSeg.start) / spq;
+            const double loopLength = t.looping ? t.loopEnd - t.loopStart : 0.0;
+            const double aheadLimit = loopLength > 0.0 && loopLength * 0.25 < 1.0 ? loopLength * 0.25 : 1.0;
+
+            auto place = [&] (const SyncChord& c, bool mayWait) noexcept
+            {
+                int seg = 0, sample = 0;
+                if (t.playing && c.playing && std::isfinite (c.ppq))
+                {
+                    bool found = false;
+                    for (int k = 0; k < clock.numSegments() && ! found; ++k)
+                    {
+                        const ClockSegment& g = clock.segment (k);
+                        const double from = g.ppq - 0.5 / spq, to = g.ppq + (g.end - g.start - 0.5) / spq;
+                        if (c.ppq >= from && c.ppq < to)
+                        {
+                            const auto x = std::llround ((c.ppq - g.ppq) * spq);
+                            seg = k;
+                            sample = g.start + (int) (x < 0 ? 0 : (x >= g.end - g.start ? g.end - g.start - 1 : x));
+                            found = true;
+                        }
+                    }
+                    if (! found && mayWait && c.ppq >= blockEnd - 0.5 / spq && c.ppq < blockEnd + aheadLimit && numAhead < (int) ahead.size())
+                    {
+                        ahead[(size_t) numAhead++] = c;
+                        return;
+                    }
+                }
+                if (numSync >= (int) syncEvents.size())
+                    return;
+                // In (segment, sample) order.
+                int k = numSync++;
+                while (k > 0 && (syncEvents[(size_t) k - 1].seg > seg
+                                 || (syncEvents[(size_t) k - 1].seg == seg && syncEvents[(size_t) k - 1].sample > sample)))
+                {
+                    syncEvents[(size_t) k] = syncEvents[(size_t) k - 1];
+                    --k;
+                }
+                syncEvents[(size_t) k] = { seg, sample, c };
+            };
+
+            // Chords held back from earlier blocks, then the new ones.
+            const int waiting = numAhead;
+            numAhead = 0;
+            std::array<SyncChord, 16> kept = ahead;
+            for (int k = 0; k < waiting; ++k)
+                place (kept[(size_t) k], ! clock.jumpedAtStart());
+            syncReader.poll (*session, group, memberId, [&] (const SyncChord& c) noexcept { place (c, true); });
         }
 
         // The next queued event of either zone due before `limit` (the chord zone's first at a
@@ -341,6 +516,9 @@ namespace chordism
                 shifters.reset();
             adoptEdits (edits, s.group != old.group);
 
+            if (s.syncGroup != old.syncGroup)
+                timeline.clear();
+
             if (s.enabled != old.enabled)
             {
                 releaseAll (0, out);
@@ -356,8 +534,11 @@ namespace chordism
             std::array<bool, numChordSlots> changed {};
             refreshChords (0, nullptr, &changed);
             performer.applySettings (s.fx, s.outputChannel, changed, 0, out);
+            const SmartChord before = patterns.getMapper().getChord();
             patterns.update (s.smart, smartChord());
             smart.applySettings (PatternEngine::fx (s.smart), s.outputChannel, {}, 0, out);
+            if (! (patterns.getMapper().getChord() == before))
+                chordChanged (0, true, 0.0);
 
             if (s.muteChords && ! old.muteChords)
                 releaseZone (Zone::Chord, out);
@@ -391,22 +572,44 @@ namespace chordism
                     if (current.muteChords)
                         return;
                     lastChordSlot = h.routed.index;
+                    remoteLatest = false;
                     performer.press (n, h.routed.index, h.velocity, sample, out);
                     followChord (sample, out);
                     return;
                 }
                 case KeyRole::ScaleTone:
+                    if (! current.muteScale)
+                        pressSmart (n, h.routed.index, h.velocity, sample, out);
+                    return;
                 case KeyRole::PassThrough:
                     if (! current.muteScale)
                         smart.press (n, h.routed.index, h.velocity, sample, out);
                     return;
                 case KeyRole::PatternSlot:
                     if (! current.muteScale)
-                        smart.press (n, PatternEngine::slotForPattern (h.routed.index), h.velocity, sample, out);
+                        pressSmart (n, PatternEngine::slotForPattern (h.routed.index), h.velocity, sample, out);
                     return;
                 case KeyRole::Shifter:
                     return;
             }
+        }
+
+        // A Smart Scale key (a tone or a pattern): within the look-ahead window before a learned
+        // chord change, it starts with the upcoming chord.
+        void pressSmart (int n, int slot, int velocity, int sample, BlockEvents& out) noexcept
+        {
+            const double window = lookAheadPpq (current.lookAhead);
+            SmartChord next;
+            if (window > 0.0 && clock.isPlaying()
+                && timeline.upcoming (clock.ppqAt (segment, sample), window, 1.0 / clock.samplesPerQuarter(),
+                                      patterns.getMapper().getChord(), next))
+            {
+                patterns.setChord (next);
+                smart.press (n, slot, velocity, sample, out);
+                patterns.setChord (smartChord());
+                return;
+            }
+            smart.press (n, slot, velocity, sample, out);
         }
 
         static int clampSample (int sample, int numSamples) noexcept
@@ -498,5 +701,23 @@ namespace chordism
         ChordPerformer performer { voices, clock, chords, context };
         PatternEngine patterns;
         ChordPerformer smart { voices, clock, chords, context, patterns, smartFirstSource };
+
+        // Phase 7: Instance Sync and look-ahead.
+        struct SyncEvent
+        {
+            int seg = 0, sample = 0;
+            SyncChord chord;
+        };
+        SharedSession* session = nullptr;
+        uint32_t memberId = 0;
+        SyncReader syncReader;
+        std::array<SyncEvent, 32> syncEvents {};   // this block's synced chords, in sample order
+        int numSync = 0;
+        std::array<SyncChord, 16> ahead {};        // stamped a little after this block
+        int numAhead = 0;
+        SmartChord remoteChord;
+        bool remoteLatest = false;
+        ChordTimeline timeline;
+        int segment = 0;                  // the block segment being processed
     };
 }

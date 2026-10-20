@@ -61,7 +61,8 @@ namespace chordism::ui
                     std::function<void (const juce::File&)> importMidi)
         : presets (p, std::move (importMidi)), exportHandle (p),
           enable (b, params::enable, "On"), key (b, params::key), scale (b, params::scale), progression (b, params::progression),
-          group (b, params::chordGroup), mapping (b, params::mapping), shifterMode (b, params::shifterMode, "Shifters")
+          group (b, params::chordGroup), mapping (b, params::mapping), shifterMode (b, params::shifterMode, "Shifters"),
+          sync (b, params::syncGroup, "Sync")
     {
         logo.setTooltip ("Setup: split, custom progression, shifter targets, test pattern, preferences");
         logo.onClick = std::move (openSetup);
@@ -72,9 +73,10 @@ namespace chordism::ui
         keyboardButton.setTooltip ("Show or hide the keyboard at the bottom");
         keyboardButton.onClick = [this, showKeyboard] { showKeyboard (keyboardButton.getToggleState()); };
         addAndMakeVisible (keyboardButton);
-        for (auto* c : { &enable, &key, &scale, &progression, &group, &mapping, &shifterMode })
+        for (auto* c : { &enable, &key, &scale, &progression, &group, &mapping, &shifterMode, &sync })
             addAndMakeVisible (c);
         mapping.setAccent (colours::smart);
+        sync.setTooltip ("Instance Sync: instances in the same group share Key, Scale and the chord their Smart Scale follows");
         addAndMakeVisible (presets);
         addAndMakeVisible (exportHandle);
     }
@@ -103,14 +105,14 @@ namespace chordism::ui
         r.removeFromLeft (6);
         enable.setBounds (r.removeFromLeft (40).withTrimmedTop (14));
         r.removeFromLeft (4);
-        presets.setBounds (r.removeFromLeft (juce::jlimit (170, 250, r.getWidth() / 4)));
+        presets.setBounds (r.removeFromLeft (juce::jlimit (150, 250, r.getWidth() * 2 / 9)));
         r.removeFromLeft (4);
         keyboardButton.setBounds (r.removeFromRight (52).withTrimmedTop (14).withTrimmedBottom (0));
         r.removeFromRight (6);
         exportHandle.setBounds (r.removeFromRight (78));
         r.removeFromRight (4);
         const struct { ParamControl* c; int w; } cols[] = { { &key, 66 }, { &scale, 118 }, { &progression, 150 }, { &group, 118 },
-                                                            { &mapping, 104 }, { &shifterMode, 90 } };
+                                                            { &mapping, 104 }, { &shifterMode, 90 }, { &sync, 70 } };
         int total = 0;
         for (const auto& c : cols)
             total += c.w;
@@ -141,7 +143,7 @@ namespace chordism::ui
         grid.add (params::repeatRate, "Repeat rate");
         grid.add (params::repeatGate, "Repeat gate");
         grid.addGap();
-        grid.addGap();
+        grid.add (params::voiceLeading, "Voice leading").setTooltip ("Smooth: each chord takes the inversion nearest the one before");
         grid.add (params::seq, "Step seq");
         grid.add (params::seqPattern, "Pattern");
         grid.add (params::seqSwing, "Swing");
@@ -289,7 +291,8 @@ namespace chordism::ui
 
     //==========================================================================
     SetupPanel::SetupPanel (ChordismProcessor& p, Bindings& b, std::function<void()> close)
-        : processor (p), left (b, 2, colours::chord), shifters (b, 4, colours::chord), right (b, 2, colours::chord)
+        : processor (p), lookAhead (b, params::lookAhead, "Look-ahead (Smart Scale, looped)"),
+          left (b, 2, colours::chord), shifters (b, 4, colours::chord), right (b, 2, colours::chord)
     {
         heading.setText ("Setup", juce::dontSendNotification);
         heading.setFont (font (18.0f, true));
@@ -334,6 +337,9 @@ namespace chordism::ui
         qwerty.onChange = [this] { processor.uiState.setProperty ("qwerty", qwerty.getSelectedId(), nullptr); };
         qwerty.setTooltip ("Play Chordism from the computer keyboard while its window has the focus");
         addAndMakeVisible (qwerty);
+        lookAhead.setAccent (colours::smart);
+        lookAhead.setTooltip ("While the transport loops, a Smart Scale key pressed this much before a chord change Chordism has learned plays the coming chord");
+        addAndMakeVisible (lookAhead);
     }
 
     void SetupPanel::paint (juce::Graphics& g)
@@ -360,5 +366,6 @@ namespace chordism::ui
         auto q = c.removeFromTop (ParamGrid::rowHeight).reduced (4, 2);
         qwertyCaption.setBounds (q.removeFromTop (14));
         qwerty.setBounds (q);
+        lookAhead.setBounds (c.removeFromTop (ParamGrid::rowHeight).reduced (4, 2).withWidth (juce::jmin (c.getWidth() - 8, 220)));
     }
 }

@@ -360,23 +360,22 @@ namespace chordism::ui
         const auto& ss = model.settings.smart;
         const bool chromatic = ss.map.mapping == Mapping::Chromatic;
 
-        SmartChord chord;
-        chord.key = d.context.key;
-        chord.scale = d.context.scale;
-        if (d.lastSlot >= 0 && d.lastSlot < numChordSlots)
-            chord.slot = d.chords[(size_t) d.lastSlot];
+        // The chord the Smart Scale follows: the last chord played here, or one from an
+        // instance in the same sync group.
+        const SmartChord chord = d.smart;
+        const ChordContext ctx { chord.key, chord.scale, d.context.outputOctave };
         ScaleMapper mapper;
         mapper.update (ss.map, chord);
-        const Spelling spelling = makeSpelling (d.context.key, d.context.scale);
+        const Spelling spelling = makeSpelling (chord.key, chord.scale);
 
         // The current chord's pitch classes (its notes as played) and root.
         std::array<bool, 12> chordPc {};
         int rootPc = -1;
-        if (d.lastSlot >= 0)
+        if (d.hasSmart)
         {
-            for (const auto n : chordNotes (chord.slot, d.context))
+            for (const auto n : chordNotes (chord.slot, ctx))
                 chordPc[(size_t) (n % 12)] = true;
-            rootPc = slotRootPc (chord.slot, d.context);
+            rootPc = slotRootPc (chord.slot, ctx);
         }
 
         for (int n = layout.lo; n <= layout.hi; ++n)

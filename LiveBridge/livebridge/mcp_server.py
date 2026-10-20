@@ -69,9 +69,9 @@ def stop_transport() -> dict:
 
 @mcp.tool()
 def set_song_properties(properties: dict) -> dict:
-    """Set song properties: current_song_time, loop, metronome, arrangement_overdub, record_mode,
-    session_record, signature_numerator, signature_denominator, back_to_arranger,
-    midi_recording_quantization ("none" or a Live.Song.RecordingQuantization name)."""
+    """Set song properties: current_song_time, loop, loop_start, loop_length (beats), metronome,
+    arrangement_overdub, record_mode, session_record, signature_numerator, signature_denominator,
+    back_to_arranger, midi_recording_quantization ("none" or a Live.Song.RecordingQuantization name)."""
     return _call("set_song_properties", **properties)
 
 
@@ -179,6 +179,12 @@ def stop_recording(mode: str = "arrangement", stop_transport: bool = True) -> di
 def clear_arrangement_clips(track: Key) -> dict:
     """Delete every arrangement clip on a track."""
     return _call("clear_arrangement_clips", track=track)
+
+
+@mcp.tool()
+def clear_session_clips(track: Key) -> dict:
+    """Delete every clip in a track's session slots."""
+    return _call("clear_session_clips", track=track)
 
 
 @mcp.tool()

@@ -51,6 +51,7 @@ namespace chordism
     {
         generated.ensureSize (output.capacity * 4);
         notifiedEditsVersion = chordEditor.getVersion();
+        engine.setSession (&SharedSession::process());
         uiState.addListener (this);
         startTimerHz (20);
     }
@@ -195,7 +196,8 @@ namespace chordism
         soundingNotes.store (engine.getVoices().soundingNotes(), std::memory_order_relaxed);
         transportPlaying.store (transport.playing, std::memory_order_relaxed);
 
-        ChordDisplay now { engine.getChords(), engine.getChordContext(), engine.getLastChordSlot(), engine.getActiveShifter() };
+        ChordDisplay now { engine.getChords(), engine.getChordContext(), engine.getLastChordSlot(), engine.getActiveShifter(),
+                           engine.getSmartChord(), engine.hasSmartChord(), engine.isSmartChordRemote() };
         if (! (now == lastDisplay))
         {
             lastDisplay = now;
@@ -254,6 +256,62 @@ namespace chordism
         chordEditor.sync (snapshot.chordGroup(), engine.getEditsDiscarded(), engine.getDiscardedVersion());
         if (const auto v = chordEditor.getVersion(); v != notifiedEditsVersion.exchange (v))
             notifyStateChanged();
+
+        syncKeyScale();
+    }
+
+    // Instance Sync (PLAN.md §4.7): Key and Scale are the group's. Joining a group takes its
+    // values (or gives it ours, if it has none); after that a change of ours is published, and a
+    // newer one from another member is adopted.
+    void ChordismProcessor::syncKeyScale()
+    {
+        auto& session = SharedSession::process();
+        const int group = snapshot.syncGroup();
+        if (group == 0)
+        {
+            syncedGroup = 0;
+            return;
+        }
+        const int key = snapshot.key(), scale = (int) snapshot.currentScale();
+        const auto shared = session.keyScale (group);
+        if (group != syncedGroup)
+        {
+            syncedGroup = group;
+            if (shared.valid)
+                adoptKeyScale (shared);
+            else
+            {
+                seenKeyScale = session.publishKeyScale (group, key, scale);
+                syncedKey = key;
+                syncedScale = scale;
+            }
+            return;
+        }
+        if (key != syncedKey || scale != syncedScale)
+        {
+            seenKeyScale = session.publishKeyScale (group, key, scale);
+            syncedKey = key;
+            syncedScale = scale;
+        }
+        else if (shared.valid && shared.version != seenKeyScale)
+        {
+            adoptKeyScale (shared);
+        }
+    }
+
+    void ChordismProcessor::adoptKeyScale (const SharedSession::KeyScale& shared)
+    {
+        auto set = [this] (const juce::String& id, int value)
+        {
+            if (auto* param = state.getParameter (id))
+                if (const float v = param->convertTo0to1 ((float) value); std::abs (param->getValue() - v) > 1.0e-6f)
+                    param->setValueNotifyingHost (v);
+        };
+        set (params::key, juce::jlimit (0, numKeys - 1, shared.key));
+        set (params::scale, juce::jlimit (0, numScales - 1, shared.scale));
+        syncedKey = snapshot.key();
+        syncedScale = (int) snapshot.currentScale();
+        seenKeyScale = shared.version;
     }
 
     void ChordismProcessor::notifyStateChanged()

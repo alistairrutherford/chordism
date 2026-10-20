@@ -220,12 +220,13 @@ class Commands:
         return {"is_playing": bool(s.is_playing), "current_song_time": s.current_song_time}
 
     def cmd_set_song_properties(self, **props):
-        """Set any of: current_song_time, loop, metronome, arrangement_overdub, record_mode,
-        session_record, signature_numerator, signature_denominator, back_to_arranger,
-        midi_recording_quantization ("none" or a Live.Song.RecordingQuantization name)."""
+        """Set any of: current_song_time, loop, loop_start, loop_length (beats), metronome,
+        arrangement_overdub, record_mode, session_record, signature_numerator,
+        signature_denominator, back_to_arranger, midi_recording_quantization ("none" or a
+        Live.Song.RecordingQuantization name)."""
         s = self._song()
-        allowed = ("current_song_time", "loop", "metronome", "arrangement_overdub", "record_mode",
-                   "session_record", "signature_numerator", "signature_denominator",
+        allowed = ("current_song_time", "loop", "loop_start", "loop_length", "metronome", "arrangement_overdub",
+                   "record_mode", "session_record", "signature_numerator", "signature_denominator",
                    "back_to_arranger", "midi_recording_quantization")
         for key, value in props.items():
             if key not in allowed:
@@ -237,7 +238,7 @@ class Commands:
                 if not hasattr(RQ, name):
                     raise CommandError("unknown recording quantization %r" % value)
                 value = getattr(RQ, name)
-            elif key in ("current_song_time",):
+            elif key in ("current_song_time", "loop_start", "loop_length"):
                 value = float(value)
             elif key in ("signature_numerator", "signature_denominator"):
                 value = int(value)
@@ -552,6 +553,18 @@ class Commands:
             s.stop_playing()
         return {"record_mode": bool(s.record_mode), "session_record": bool(s.session_record),
                 "is_playing": bool(s.is_playing), "current_song_time": s.current_song_time}
+
+    def cmd_clear_session_clips(self, track):
+        """Delete every clip in the track's session slots (Phase 7: looped takes are recorded there)."""
+        t = self._track(track)
+        n = 0
+        for slot in t.clip_slots:
+            if slot.has_clip:
+                slot.delete_clip()
+                n += 1
+        if self._last_session_slot and self._last_session_slot[0] == t:
+            self._last_session_slot = None
+        return {"track": self._track_index(t), "deleted": n}
 
     def cmd_clear_arrangement_clips(self, track):
         t = self._track(track)

@@ -33,7 +33,8 @@ from livebridge import timing
 
 # Plug-in choice lists (Source/core/engine/*.h, Source/plugin/Parameters.cpp).
 MAPPING = ["Chord Tones", "Dynamic", "Relative", "Absolute", "Chromatic"]
-TEST_SMART = ["Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5"]
+TEST_SMART = ["Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5",
+              "Tones early"]   # Phase 7 appended Tones early
 SLOTS = ["1", "2", "3", "4", "5"]
 PATTERN_ARP = ARP[1:] + ["Melody"]   # Phase 6 appended Melody to the pattern slots' list
 ARP_CHORD = ["5ths", "Triads", "7ths", "9ths", "11ths", "13ths"]

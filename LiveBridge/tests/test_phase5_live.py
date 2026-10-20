@@ -41,7 +41,7 @@ SETTINGS = {
     "SS hold": (2, [""] * 3),          # Bar
     "Note repeat": (True, None),
     "Test shifter": (0, [""] * 6),
-    "Test smart": (0, [""] * 7),
+    "Test smart": (0, [""] * 8),
 }
 
 

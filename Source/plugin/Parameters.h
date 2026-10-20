@@ -89,7 +89,13 @@ namespace chordism::params
     inline constexpr const char* melodySwing   = "melodySwing";
     inline constexpr const char* melodySeed    = "melodySeed";
 
-    // Parameters a preset doesn't touch: Enable and the test rig (PresetManager).
+    // Phase 7 (appended): Instance Sync, look-ahead, voice leading. "Test smart" gained a last
+    // choice, "Tones early".
+    inline constexpr const char* syncGroup     = "syncGroup";
+    inline constexpr const char* lookAhead     = "lookAhead";
+    inline constexpr const char* voiceLeading  = "voiceLeading";
+
+    // Parameters a preset doesn't touch: Enable, the Sync group and the test rig (PresetManager).
     bool isPresetParameter (const juce::String& paramId);
 
     // A sequencer pattern as Live shows it: "x" for an active step, "." for a rest, step 1 first.
@@ -106,13 +112,15 @@ namespace chordism::params
 
         EngineSettings engineSettings() const noexcept;
         ChordGroup chordGroup() const noexcept;
+        int syncGroup() const noexcept;
+        int key() const noexcept;
         Scale currentScale() const noexcept;
         ChordFxSettings chordFx() const noexcept;
         SmartSettings smart() const noexcept;
 
     private:
         std::atomic<float>* enable;
-        std::atomic<float>* key;
+        std::atomic<float>* keyParam;
         std::atomic<float>* scale;
         std::atomic<float>* group;
         std::atomic<float>* split;
@@ -169,6 +177,9 @@ namespace chordism::params
         std::array<std::atomic<float>*, numPatternSlots> patNotes {}, patRhythm {};
         std::atomic<float>* ssMelodySwing;
         std::atomic<float>* ssMelodySeed;
+        std::atomic<float>* sync;
+        std::atomic<float>* ssLookAhead;
+        std::atomic<float>* fxVoiceLeading;
     };
 
     // MIDI note name as Live writes it (60 = C3).

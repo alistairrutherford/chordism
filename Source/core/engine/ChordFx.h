@@ -1,7 +1,12 @@
 // The chord zone's effect chain and its scheduler (PLAN.md §4.5):
 //
-//   trigger → chord slot → voicing → Octave → Stack → [Strum | Arp] → Repeat → StepSeq gate
-//           → Velocity Algorithm → Hold → (Mute, in ChordismEngine) → out
+//   trigger → chord slot → voicing (+ voice leading) → Octave → Stack → [Strum | Arp] → Repeat
+//           → StepSeq gate → Velocity Algorithm → Hold → (Mute, in ChordismEngine) → out
+//
+// Voice leading (Phase 7, VoiceLeading.h): with Smooth, a chord takes the inversion and octave
+// nearest the chord the zone played last (pressed or retuned), before Stack. The last chord is
+// forgotten when the transport starts and when everything ends, so a take from the top always
+// voices the same.
 //
 // Each chord key that goes down starts a *performance* (one per key, so 128). A performance
 // plays its chord in strikes: one strike for as long as the chord is held, or a strike per
@@ -36,6 +41,7 @@
 
 #include "../theory/ChordModel.h"
 #include "../theory/ChordGroups.h"
+#include "../theory/VoiceLeading.h"
 #include "Arp.h"
 #include "Clock.h"
 #include "EventQueue.h"
@@ -68,6 +74,7 @@ namespace chordism
         StepSeqSettings seq;
         VelocitySettings velocity;
         HoldMode hold = HoldMode::Off;
+        VoiceLeadingMode voiceLeading = VoiceLeadingMode::Off;   // Phase 7
     };
 
     // The arp a performance runs: the chord zone's Arp settings, or a Smart Scale pattern slot's.
@@ -143,6 +150,7 @@ namespace chordism
             queue.clear();
             alive = 0;
             strummer.reset();
+            haveLed = false;
         }
 
         // The block segment (Clock) that the following calls' samples are in.
@@ -196,7 +204,7 @@ namespace chordism
                 for (int k = 0; k < numPerformances; ++k)
                     if (restart[(size_t) k])
                     {
-                        perfs[(size_t) k].notes = voiced (k, perfs[(size_t) k].slot);
+                        perfs[(size_t) k].notes = take (k, perfs[(size_t) k].slot);
                         startPattern (k, sample, true);
                     }
                 if (restartAll)
@@ -204,7 +212,7 @@ namespace chordism
             }
 
             std::array<bool, numChordSlots> slots = changed;
-            if (old.stack != s.stack)
+            if (old.stack != s.stack || old.voiceLeading != s.voiceLeading)
                 slots.fill (true);
             retuneWhere ([&] (int k, const Perf& p) noexcept
             {
@@ -212,8 +220,13 @@ namespace chordism
             }, sample);
         }
 
-        // The transport started (stopped → playing): Random strum starts from its seed again.
-        void transportStarted() noexcept { strummer.reset(); }
+        // The transport started (stopped → playing): Random strum starts from its seed again, and
+        // voice leading from the chord as written.
+        void transportStarted() noexcept
+        {
+            strummer.reset();
+            haveLed = false;
+        }
 
         // Musical time moved by `delta` at `sample` (the start of the current segment): a loop
         // wrap, a locate, or the start of playback. Queued note-offs and strum tones move with
@@ -276,7 +289,7 @@ namespace chordism
             p.latched = false;
             p.slot = slot;
             p.velocity = (uint8_t) (velocity < 1 ? 1 : (velocity > 127 ? 127 : velocity));
-            p.notes = voiced (key, slot);
+            p.notes = take (key, slot);
             ++alive;
             startPattern (key, sample, true);
         }
@@ -315,6 +328,7 @@ namespace chordism
             for (int k = 0; k < numPerformances; ++k)
                 if (perfs[(size_t) k].alive)
                     endPerformance (k, sample);
+            haveLed = false;
         }
 
         // The chords changed (parameters, edits, a shifter): every performance whose slot is
@@ -399,6 +413,9 @@ namespace chordism
         int queued() const noexcept { return queue.size(); }
         const ChordFxSettings& settings() const noexcept { return fx; }
 
+        // The tones key `key`'s performance plays now (ascending).
+        VoicedNotes notesOf (int key) const noexcept { return isAlive (key) ? perfs[(size_t) key].notes : VoicedNotes {}; }
+
     private:
         struct Perf
         {
@@ -430,13 +447,33 @@ namespace chordism
         bool hasRhythm() const noexcept { return fx.repeat.on || fx.seq.on; }
         StepGrid stepGrid() const noexcept { return StepGrid (fx.seq, clock.barOrigin(), clock.barLength()); }
 
-        VoicedNotes voiced (int key, int slot) const noexcept
+        // The tones a performance of `slot` plays; for the chord zone, `base` gets the chord's
+        // voicing before Stack (led from the last chord with Smooth voice leading).
+        VoicedNotes voiced (int key, int slot, ChordNotes* base = nullptr) const noexcept
         {
             if (voicing != nullptr)
                 return voicing->tones (key, slot);
             if (slot < 0 || slot >= numChordSlots)
                 return {};
-            return stackNotes (chordNotes (chords[(size_t) slot], context), fx.stack);
+            ChordNotes notes = chordNotes (chords[(size_t) slot], context);
+            if (fx.voiceLeading == VoiceLeadingMode::Smooth)
+                notes = leadVoicing (notes, haveLed ? &led : nullptr, context);
+            if (base != nullptr)
+                *base = notes;
+            return stackNotes (notes, fx.stack);
+        }
+
+        // voiced(), for a performance that now plays it: its chord is the one the next is led from.
+        VoicedNotes take (int key, int slot) noexcept
+        {
+            ChordNotes base;
+            const VoicedNotes v = voiced (key, slot, &base);
+            if (voicing == nullptr && slot >= 0 && slot < numChordSlots)
+            {
+                led = base;
+                haveLed = true;
+            }
+            return v;
         }
 
         ArpSettings arpOf (int key, int slot) const noexcept
@@ -457,10 +494,16 @@ namespace chordism
                 Perf& p = perfs[(size_t) k];
                 if (! p.alive || ! marked (k, (const Perf&) p))
                     continue;
-                const VoicedNotes next = voiced (k, p.slot);
+                ChordNotes base;
+                const VoicedNotes next = voiced (k, p.slot, &base);
                 if (next == p.notes)
                     continue;
                 p.notes = next;
+                if (voicing == nullptr)
+                {
+                    led = base;
+                    haveLed = true;
+                }
                 if (voicing == nullptr && ! p.arpMode && p.strikeOpen)
                 {
                     voices.release (source (k, p.src), sample, *out);
@@ -828,5 +871,7 @@ namespace chordism
         Strummer strummer;
         EventQueue<1024> queue;           // ≤ 4 events per performance (strum tone, end, next, hold)
         int pending = -1, pendingAt = 0;
+        ChordNotes led {};                // voice leading: the chord played last, before Stack
+        bool haveLed = false;
     };
 }

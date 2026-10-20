@@ -359,6 +359,51 @@ namespace
             check (chord == std::vector<int> { 52, 55, 59 } && noteOffs (release) == 3, "pressing D on the computer keyboard plays chord 3 (Em) and releasing it ends it");
         }
     }
+
+    // Phase 7: two processors in one sync group (the process-wide SharedSession).
+    void testPhase7()
+    {
+        std::cout << "== Phase 7: Instance Sync ==\n";
+        auto pump = [] { for (int i = 0; i < 6; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (20); };
+        auto a = std::make_unique<ChordismProcessor>();
+        auto b = std::make_unique<ChordismProcessor>();
+        for (auto* p : { a.get(), b.get() })
+            p->prepareToPlay (44100.0, 512);
+        set (*a, params::key, 2.0f);
+        set (*a, params::scale, (float) (int) Scale::Dorian);
+        set (*a, params::syncGroup, 3.0f);      // C (A and B may be in use by other tests' processes)
+        pump();
+        set (*b, params::syncGroup, 3.0f);
+        pump();
+        check ((int) get (*b, params::key) == 2 && (int) get (*b, params::scale) == (int) Scale::Dorian,
+               "joining a group takes its Key and Scale (D Dorian)");
+        set (*b, params::key, 7.0f);
+        pump();
+        check ((int) get (*a, params::key) == 7 && (int) get (*a, params::scale) == (int) Scale::Dorian,
+               "a Key change in one instance reaches the other (G)");
+
+        // A plays chord key D (slot 2: iii in G Dorian, B minor's degree); B's Smart Scale follows.
+        block (*a, { juce::MidiMessage::noteOn (1, 50, (juce::uint8) 100) });
+        block (*b, {});
+        const auto& shown = b->readDisplay();
+        check (shown.smartRemote && shown.hasSmart && shown.smart.slot.degree == 1 && shown.smart.key == 7,
+               "B's Smart Scale (and its keyboard) follows A's chord");
+        set (*b, params::muteChords, 1.0f);
+        const auto out = noteOns (block (*b, { juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100) }));
+        check (out.size() == 1 && out[0] == 60 + 7 + scaleOffset (Scale::Dorian, 1),
+               "B's Smart key C plays A's chord root (" + juce::String (out.empty() ? -1 : out[0]) + ")");
+        block (*a, { juce::MidiMessage::noteOff (1, 50) });
+        block (*b, { juce::MidiMessage::noteOff (1, 60) });
+
+        // A preset leaves the Sync group alone.
+        const auto tree = a->presetState();
+        check (! tree.getChildWithProperty ("id", params::syncGroup).isValid(), "a preset doesn't hold the Sync group");
+        set (*b, params::syncGroup, 0.0f);
+        b->applyPreset (tree, "User", "Synced");
+        check ((int) get (*b, params::syncGroup) == 0, "loading a preset keeps the instance's Sync group");
+        set (*a, params::syncGroup, 0.0f);
+        pump();
+    }
 }
 
 int main (int argc, char** argv)
@@ -504,6 +549,7 @@ int main (int argc, char** argv)
            "a pre-Phase 4 state's step bools become the packed patterns (missing patterns keep their defaults)");
 
     testPhase6();
+    testPhase7();
 
     std::cout << (failures == 0 ? "\nsnapshot: all passed\n" : "\n*** snapshot: " + std::to_string (failures) + " failure(s)\n");
     return failures == 0 ? 0 : 1;

@@ -8,6 +8,9 @@
 // MIDI files import as chords (ChordImporter); presets (PresetManager) load on the message
 // thread, and the factory presets are also the plug-in's programs (program 0 = Init), which a
 // host may change from another thread: that load waits for the timer.
+//
+// Phase 7: the engine syncs chords through the process-wide SharedSession; the timer shares the
+// Key and Scale parameters with the instance's sync group (the last change wins).
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -29,11 +32,14 @@ namespace chordism
         ChordContext context;
         int lastSlot = -1;
         int activeShifter = -1;
+        SmartChord smart;                 // the chord the Smart Scale follows (ours or a synced one)
+        bool hasSmart = false, smartRemote = false;
 
         bool operator== (const ChordDisplay& o) const noexcept
         {
             return chords == o.chords && context.key == o.context.key && context.scale == o.context.scale
-                && context.outputOctave == o.context.outputOctave && lastSlot == o.lastSlot && activeShifter == o.activeShifter;
+                && context.outputOctave == o.context.outputOctave && lastSlot == o.lastSlot && activeShifter == o.activeShifter
+                && smart == o.smart && hasSmart == o.hasSmart && smartRemote == o.smartRemote;
         }
     };
 
@@ -162,6 +168,13 @@ namespace chordism
         std::atomic<int> currentProgram { 0 }, pendingProgram { -1 };
         void loadProgram (int index);
         bool writeTake (const juce::File& file, juce::String& error) const;
+
+        // Instance Sync of Key and Scale (message thread): the group last synced with, the values
+        // last published or adopted, and the group's version seen.
+        void syncKeyScale();
+        void adoptKeyScale (const SharedSession::KeyScale&);
+        int syncedGroup = 0, syncedKey = -1, syncedScale = -1;
+        uint32_t seenKeyScale = 0;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordismProcessor)
     };

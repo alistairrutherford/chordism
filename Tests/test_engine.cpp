@@ -667,6 +667,9 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
 
     Rig rig;
     rig.transport = { 44100.0, false, 0.0, 120.0, 4, 4 };
+    SharedSession session;
+    rig.engine.setSession (&session);
+    const uint32_t otherMember = session.join();
     std::set<std::pair<int, int>> keysDown;   // (channel, note) the "player" holds
     int maxSounding = 0;
     int fxBlocks = 0, wrapBlocks = 0;         // blocks with a timed effect playing, with a loop wrap inside
@@ -831,6 +834,23 @@ static void testFuzz (uint32_t seed, int blocks, bool fxRun = false)
         if (chance (0.02)) ss.velocity = { (VelocityCurve) pick (0, numVelocityCurves - 1), pick (1, 127), unit() };
         if (chance (0.02)) ss.hold = (HoldMode) pick (0, numHoldModes - 1);
         if (chance (0.02)) rig.settings.testSmart = pick (0, TestPattern::numSmartTests - 1);
+
+        // Phase 7: voice leading, look-ahead, and chords from another member of a sync group
+        // (a fake one publishing into this engine's session) while notes are held.
+        if (chance (0.02)) fx.voiceLeading = chance (0.6) ? VoiceLeadingMode::Smooth : VoiceLeadingMode::Off;
+        if (chance (0.02)) rig.settings.lookAhead = pick (0, numLookAheads - 1);
+        if (chance (0.01)) rig.settings.syncGroup = chance (0.3) ? 0 : pick (1, numSyncGroups);
+        if (chance (0.05) && SharedSession::validGroup (rig.settings.syncGroup))
+        {
+            SyncChord c;
+            c.chord.key = pick (0, 11);
+            c.chord.scale = (Scale) pick (0, numScales - 1);
+            c.chord.slot = makeGroupSlot ((ChordGroup) pick (0, numChordGroups - 1), c.chord.scale, pick (0, 6));
+            c.ppq = rig.transport.ppq + std::uniform_real_distribution<double> (-1.0, 1.5) (rng);
+            c.playing = chance (0.8);
+            c.sender = otherMember;
+            session.publish (rig.settings.syncGroup, c);
+        }
 
         if (chance (0.005))
         {

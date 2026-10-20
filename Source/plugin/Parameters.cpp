@@ -93,7 +93,7 @@ namespace chordism::params
 
     bool isPresetParameter (const juce::String& paramId)
     {
-        for (const char* excluded : { enable, testPattern, testShifter, testSmart })
+        for (const char* excluded : { enable, testPattern, testShifter, testSmart, syncGroup })
             if (paramId == excluded)
                 return false;
         return true;
@@ -265,7 +265,8 @@ namespace chordism::params
 
         // Test smart: the test pattern also plays the Smart Scale zone (TestPattern.h).
         layout.add (std::make_unique<AudioParameterChoice> (id (testSmart), "Test smart",
-                                                            StringArray { "Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5" }, 0));
+                                                            StringArray { "Off", "Tones", "Pattern 1", "Pattern 2", "Pattern 3", "Pattern 4", "Pattern 5",
+                                                                          "Tones early" }, 0));
 
         // Phase 6: Melody mode (Source/core/engine/Melody.h). Appended, never reordered.
         for (int n = 0; n < numPatternSlots; ++n)
@@ -279,12 +280,21 @@ namespace chordism::params
         }
         layout.add (percent (melodySwing, "Melody swing", (float) (ss.melodySwing * 100.0)));
         layout.add (std::make_unique<AudioParameterInt> (id (melodySeed), "Melody seed", minMelodySeed, maxMelodySeed, (int) ss.melodySeed));
+
+        // Phase 7: Instance Sync (SharedSession.h), look-ahead (ChordTimeline.h), voice leading
+        // (VoiceLeading.h). Appended, never reordered.
+        layout.add (std::make_unique<AudioParameterChoice> (id (syncGroup), "Sync group",
+                                                            names (numSyncGroups + 1, syncGroupName), 0));
+        layout.add (std::make_unique<AudioParameterChoice> (id (lookAhead), "Look-ahead", names (numLookAheads, lookAheadName),
+                                                            defaultLookAhead));
+        layout.add (std::make_unique<AudioParameterChoice> (id (voiceLeading), "Voice leading",
+                                                            names (numVoiceLeadingModes, [] (int i) { return voiceLeadingName ((VoiceLeadingMode) i); }), 0));
         return layout;
     }
 
     Snapshot::Snapshot (juce::AudioProcessorValueTreeState& state)
         : enable (state.getRawParameterValue (params::enable)),
-          key (state.getRawParameterValue (params::key)),
+          keyParam (state.getRawParameterValue (params::key)),
           scale (state.getRawParameterValue (params::scale)),
           group (state.getRawParameterValue (params::chordGroup)),
           split (state.getRawParameterValue (params::split)),
@@ -332,9 +342,12 @@ namespace chordism::params
           ssHold (state.getRawParameterValue (params::smartHold)),
           ssTest (state.getRawParameterValue (params::testSmart)),
           ssMelodySwing (state.getRawParameterValue (params::melodySwing)),
-          ssMelodySeed (state.getRawParameterValue (params::melodySeed))
+          ssMelodySeed (state.getRawParameterValue (params::melodySeed)),
+          sync (state.getRawParameterValue (params::syncGroup)),
+          ssLookAhead (state.getRawParameterValue (params::lookAhead)),
+          fxVoiceLeading (state.getRawParameterValue (params::voiceLeading))
     {
-        jassert (enable && key && scale && group && split && chordOctave && muteChords && muteScale
+        jassert (enable && keyParam && scale && group && split && chordOctave && muteChords && muteScale
                  && testPattern && progression && shifterMode && testShifter);
 
         for (int n = 0; n < numChordSlots; ++n)
@@ -376,6 +389,7 @@ namespace chordism::params
             jassert (patNotes[(size_t) n] && patRhythm[(size_t) n]);
         }
         jassert (ssMelodySwing && ssMelodySeed);
+        jassert (sync && ssLookAhead && fxVoiceLeading);
     }
 
     ChordFxSettings Snapshot::chordFx() const noexcept
@@ -403,6 +417,7 @@ namespace chordism::params
         fx.velocity.peak = juce::jlimit (1, 127, whole (fxVelocityPeak));
         fx.velocity.range = fraction (fxVelocityRange);
         fx.hold = (HoldMode) choice (fxHold, numHoldModes);
+        fx.voiceLeading = (VoiceLeadingMode) choice (fxVoiceLeading, numVoiceLeadingModes);
         return fx;
     }
 
@@ -454,12 +469,16 @@ namespace chordism::params
         return (Scale) juce::jlimit (0, numScales - 1, whole (scale));
     }
 
+    int Snapshot::key() const noexcept { return juce::jlimit (0, numKeys - 1, whole (keyParam)); }
+
+    int Snapshot::syncGroup() const noexcept { return choice (sync, numSyncGroups + 1); }
+
     EngineSettings Snapshot::engineSettings() const noexcept
     {
         EngineSettings s;
         s.enabled = on (enable);
-        s.key = juce::jlimit (0, numKeys - 1, whole (key));
-        s.scale = (Scale) juce::jlimit (0, numScales - 1, whole (scale));
+        s.key = key();
+        s.scale = currentScale();
         s.group = chordGroup();
         s.split = juce::jlimit (0, 127, whole (split));
         s.chordOctave = juce::jlimit (-3, 3, whole (chordOctave));
@@ -483,6 +502,8 @@ namespace chordism::params
         s.fx = chordFx();
         s.smart = smart();
         s.testSmart = choice (ssTest, TestPattern::numSmartTests);
+        s.syncGroup = syncGroup();
+        s.lookAhead = choice (ssLookAhead, numLookAheads);
         return s;
     }
 }

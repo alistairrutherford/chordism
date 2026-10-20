@@ -40,6 +40,7 @@ compile_and_run test_fx
 compile_and_run test_smart
 compile_and_run test_melody
 compile_and_run test_midiio
+compile_and_run test_sync
 
 echo ""
 echo "All test binaries passed."
