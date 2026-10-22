@@ -4,6 +4,8 @@ A MIDI chord generator plug-in for Ableton Live on macOS: one key plays a full c
 rest of the keyboard becomes a scale that follows it. A clean-room take on ChordPrism's
 behaviour, for personal use. The plan, decisions and status are in [PLAN.md](PLAN.md).
 
+![Chordism's editor: the chord keys and Chord FX on the left, the Smart Scale keys and pattern settings on the right, and the output keyboard along the bottom](docs/screenshot.png)
+
 ## Install
 
 Needs Xcode (open it once after installing) and JUCE 8.0.14:
