@@ -9,9 +9,9 @@
 //                  the melody's (Notes, Rhythm; Swing and Seed for all slots beside the slot
 //                  buttons); the Smart Scale's effects: Stack, Hold, Velocity, Step Sequencer
 //                  and its steps
-//   SetupPanel     everything else, as an overlay: Split, the custom progression, the five
-//                  shifters' targets, the test pattern (LiveBridge), and the preferences (the
-//                  QWERTY layout, the look-ahead window)
+//   SetupPanel     everything else, as an overlay: Split (with down/up buttons), the custom
+//                  progression, the five shifters' targets, the test pattern (LiveBridge), and
+//                  the preferences (the QWERTY layout, the look-ahead window)
 #pragma once
 
 #include "Keyboards.h"
@@ -27,6 +27,7 @@ namespace chordism::ui
 
         ParamControl& add (const juce::String& paramId, const juce::String& label = {});
         void addGap() { cells.add (nullptr); }
+        void addCell (juce::Component& c) { addAndMakeVisible (c); cells.add (&c); }   // not owned
         void addSection (const juce::String& title);   // a caption row across the grid
 
         int rows() const noexcept;
@@ -111,5 +112,6 @@ namespace chordism::ui
         juce::ComboBox qwerty;            // the QWERTY layout preference (ChordismEditor)
         ParamControl lookAhead;
         ParamGrid left, shifters, right;
+        ParamStepper splitStepper;        // beside Split: a semitone a click, Shift an octave
     };
 }

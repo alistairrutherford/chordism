@@ -65,6 +65,26 @@ namespace chordism::ui
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sliderAttachment;
     };
 
+    // Down and up buttons beside a number parameter's slider: each click steps it by `step` (with
+    // Shift by `bigStep`) within its range, as one host gesture (Setup: the Split, a semitone or
+    // an octave).
+    class ParamStepper : public juce::Component
+    {
+    public:
+        ParamStepper (Bindings&, const juce::String& paramId, const juce::String& label, float step, float bigStep);
+
+        void nudge (int direction, bool big);   // -1 down, +1 up
+        void resized() override;
+
+        juce::TextButton down { juce::CharPointer_UTF8 ("\xe2\x96\xbc") }, up { juce::CharPointer_UTF8 ("\xe2\x96\xb2") };
+
+    private:
+        Bindings& bindings;
+        juce::String paramId;
+        float step, bigStep;
+        juce::Label caption;
+    };
+
     // The 16 steps of a sequencer pattern: one packed parameter (seqNSteps / smartSeqNSteps).
     class StepSeqView : public juce::Component,
                         public juce::SettableTooltipClient,

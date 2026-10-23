@@ -292,7 +292,8 @@ namespace chordism::ui
     //==========================================================================
     SetupPanel::SetupPanel (ChordismProcessor& p, Bindings& b, std::function<void()> close)
         : processor (p), lookAhead (b, params::lookAhead, "Look-ahead (Smart Scale, looped)"),
-          left (b, 2, colours::chord), shifters (b, 4, colours::chord), right (b, 2, colours::chord)
+          left (b, 2, colours::chord), shifters (b, 4, colours::chord), right (b, 2, colours::chord),
+          splitStepper (b, params::split, "Move split", 1.0f, 12.0f)
     {
         heading.setText ("Setup", juce::dontSendNotification);
         heading.setFont (font (18.0f, true));
@@ -303,7 +304,9 @@ namespace chordism::ui
 
         left.addSection ("Keyboard");
         left.add (params::split);
-        left.addGap();
+        left.addCell (splitStepper);
+        splitStepper.down.setTooltip ("Split down a semitone (Shift: an octave)");
+        splitStepper.up.setTooltip ("Split up a semitone (Shift: an octave)");
         left.addSection ("Custom progression (degree per white key)");
         for (int n = 0; n < numChordSlots; ++n)
             left.add (params::customDegree (n), "Key " + juce::String::charToString ("CDEFGAB"[n]));

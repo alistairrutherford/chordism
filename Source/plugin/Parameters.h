@@ -95,7 +95,7 @@ namespace chordism::params
     inline constexpr const char* lookAhead     = "lookAhead";
     inline constexpr const char* voiceLeading  = "voiceLeading";
 
-    // Parameters a preset doesn't touch: Enable, the Sync group and the test rig (PresetManager).
+    // Parameters a preset doesn't touch: Enable, Split, the Sync group and the test rig (PresetManager).
     bool isPresetParameter (const juce::String& paramId);
 
     // A sequencer pattern as Live shows it: "x" for an active step, "." for a rest, step 1 first.

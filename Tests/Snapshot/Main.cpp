@@ -13,8 +13,8 @@
 //                 restores the same sequencer patterns
 //   4. Phase 6    presets (every factory program loads its values over the defaults, Init is
 //                 the defaults, a preset's state round-trips into a new instance without touching
-//                 Enable or the test rig, a load ends every note); MIDI import from a file (the
-//                 parameters, edits and chords it gives); Export under a playing transport (the
+//                 Enable, Split or the test rig, a load ends every note); MIDI import from a file
+//                 (the parameters, edits and chords it gives); Export under a playing transport (the
 //                 handle's bar count and the file); QWERTY (both layouts, and a key press through
 //                 the editor plays its chord)
 //   5. Phase 8    hardening: no allocation in processBlock (a malloc hook counts every one on
@@ -100,6 +100,20 @@ namespace
     }
 
     float get (ChordismProcessor& p, const juce::String& id) { return p.state.getRawParameterValue (id)->load(); }
+
+    // The first component of type T under `c`, depth first.
+    template <typename T>
+    T* findChild (juce::Component& c)
+    {
+        for (auto* child : c.getChildren())
+        {
+            if (auto* t = dynamic_cast<T*> (child))
+                return t;
+            if (auto* t = findChild<T> (*child))
+                return t;
+        }
+        return nullptr;
+    }
 
     // A block of the processor with these MIDI events at sample 0; returns its output.
     juce::MidiBuffer block (ChordismProcessor& p, std::initializer_list<juce::MidiMessage> events)
@@ -404,6 +418,32 @@ namespace
             editor->keyStateChanged (false);   // the key isn't down: its note-off
             const auto release = block (*p, {});
             check (chord == std::vector<int> { 52, 55, 59 } && noteOffs (release) == 3, "pressing D on the computer keyboard plays chord 3 (Em) and releasing it ends it");
+
+            // Setup's buttons beside Split: a semitone a click, an octave with Shift, within 0..127.
+            auto* stepper = findChild<ui::ParamStepper> (*editor);
+            check (stepper != nullptr, "Setup has down/up buttons beside Split");
+            if (stepper != nullptr)
+            {
+                stepper->up.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+                const int afterUp = (int) get (*p, params::split);
+                stepper->down.triggerClick();
+                stepper->down.triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+                const int afterDown = (int) get (*p, params::split);
+                stepper->nudge (1, true);
+                const int afterOctave = (int) get (*p, params::split);
+                set (*p, params::split, 125.0f);
+                stepper->nudge (1, true);
+                const int top = (int) get (*p, params::split);
+                set (*p, params::split, 0.0f);
+                stepper->nudge (-1, false);
+                const int bottom = (int) get (*p, params::split);
+                check (afterUp == 61 && afterDown == 59 && afterOctave == 71 && top == 127 && bottom == 0,
+                       "Split up 61, down twice 59, Shift-up 71; it stops at 127 and 0 (" + juce::String (afterUp) + ", "
+                           + juce::String (afterDown) + ", " + juce::String (afterOctave) + ", " + juce::String (top) + ", "
+                           + juce::String (bottom) + ")");
+            }
         }
     }
 
@@ -449,6 +489,16 @@ namespace
         b->applyPreset (tree, "User", "Synced");
         check ((int) get (*b, params::syncGroup) == 0, "loading a preset keeps the instance's Sync group");
         set (*a, params::syncGroup, 0.0f);
+
+        // ... and the Split, from a user preset or a factory program.
+        check (! tree.getChildWithProperty ("id", params::split).isValid(), "a preset doesn't hold the Split");
+        set (*b, params::split, 84.0f);
+        b->applyPreset (tree, "User", "Synced");
+        check ((int) get (*b, params::split) == 84, "loading a preset keeps the Split");
+        b->setCurrentProgram (3);
+        pump();
+        check ((int) get (*b, params::split) == 84, "loading a factory program keeps the Split");
+        set (*b, params::split, (float) InputRouter::defaultSplit);
         pump();
     }
 }

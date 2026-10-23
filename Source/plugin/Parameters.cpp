@@ -93,7 +93,7 @@ namespace chordism::params
 
     bool isPresetParameter (const juce::String& paramId)
     {
-        for (const char* excluded : { enable, testPattern, testShifter, testSmart, syncGroup })
+        for (const char* excluded : { enable, split, testPattern, testShifter, testSmart, syncGroup })
             if (paramId == excluded)
                 return false;
         return true;

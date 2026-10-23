@@ -102,6 +102,45 @@ namespace chordism::ui
     }
 
     //==========================================================================
+    ParamStepper::ParamStepper (Bindings& b, const juce::String& id, const juce::String& label, float s, float big)
+        : bindings (b), paramId (id), step (s), bigStep (big)
+    {
+        caption.setText (label, juce::dontSendNotification);
+        caption.setJustificationType (juce::Justification::centredLeft);
+        caption.setInterceptsMouseClicks (false, false);
+        addAndMakeVisible (caption);
+
+        const juce::String name = bindings.param (id) != nullptr ? bindings.param (id)->getName (64) : id;
+        down.setTooltip (name + " down (Shift: further)");
+        up.setTooltip (name + " up (Shift: further)");
+        down.onClick = [this] { nudge (-1, juce::ModifierKeys::getCurrentModifiers().isShiftDown()); };
+        up.onClick = [this] { nudge (1, juce::ModifierKeys::getCurrentModifiers().isShiftDown()); };
+        addAndMakeVisible (down);
+        addAndMakeVisible (up);
+    }
+
+    void ParamStepper::nudge (int direction, bool big)
+    {
+        auto* p = bindings.param (paramId);
+        if (p == nullptr)
+            return;
+        const float now = bindings.value (paramId);
+        const float next = p->getNormalisableRange().snapToLegalValue (now + (float) direction * (big ? bigStep : step));
+        if (next != now)
+            bindings.set (paramId, next);
+    }
+
+    void ParamStepper::resized()
+    {
+        // Laid out like a ParamControl: the caption above, the buttons where its control sits.
+        auto r = getLocalBounds();
+        caption.setBounds (r.removeFromTop (juce::jmin (15, r.getHeight() / 2)));
+        r = r.withSizeKeepingCentre (r.getWidth(), juce::jmin (r.getHeight(), 26));
+        down.setBounds (r.removeFromLeft ((r.getWidth() - 4) / 2));
+        up.setBounds (r.withTrimmedLeft (4));
+    }
+
+    //==========================================================================
     StepSeqView::StepSeqView (Bindings& b, juce::Colour a) : bindings (b), accent (a), numberFont (font (10.0f)) {}
 
     StepSeqView::~StepSeqView()

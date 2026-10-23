@@ -1,8 +1,9 @@
 // Presets (PLAN.md §4.7): the factory presets (FactoryPresets.h) and the user's preset files,
 // XML in ~/Music/Chordism/Presets/<Category>/<Name>.xml, each the plug-in state's own ValueTree
 // (the host parameters and the Chord Editor's edits) without what a preset doesn't touch: the
-// routing (Enable, the virtual port) and the test rig (params::isPresetParameter), and the
-// editor's own preferences. A file in any category folder is listed under that category.
+// routing (Enable, the virtual port), the keyboard's Split and the test rig
+// (params::isPresetParameter), and the editor's own preferences. A file in any category folder
+// is listed under that category.
 //
 // The browser lists the factory presets first (Init, then Genre, Artist-style, Vibe), then the
 // files by category and name. Message thread only.
